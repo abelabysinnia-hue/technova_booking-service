@@ -13,6 +13,7 @@ async function examplePassengerCancellation() {
   console.log('=== Example 1: Passenger Cancellation ===');
   
   try {
+    // Using existing DELETE endpoint
     const result = await bookingService.cancelBooking({
       bookingId: '64f8a1b2c3d4e5f6a7b8c9d0',
       canceledReason: 'Change of plans',
@@ -24,6 +25,7 @@ async function examplePassengerCancellation() {
     
     console.log('Cancellation result:', result);
     console.log('✅ Passenger cancellation handled successfully');
+    console.log('📡 API: DELETE /v1/bookings/:id');
   } catch (error) {
     console.error('❌ Error handling passenger cancellation:', error.message);
   }
@@ -34,9 +36,18 @@ async function examplePassengerDisconnection() {
   console.log('\n=== Example 2: Passenger Disconnection ===');
   
   try {
-    const result = await bookingService.handlePassengerDisconnection('64f8a1b2c3d4e5f6a7b8c9d0');
+    // Using existing lifecycle endpoint
+    const result = await bookingService.handleBookingLifecycle({
+      bookingId: '64f8a1b2c3d4e5f6a7b8c9d0',
+      passengerDisconnected: true,
+      driverAccepted: true,
+      driverId: 'driver456',
+      passengerId: 'passenger123'
+    });
+    
     console.log('Disconnection result:', result);
     console.log('✅ Passenger disconnection handled successfully');
+    console.log('📡 API: POST /v1/bookings/:id/lifecycle');
   } catch (error) {
     console.error('❌ Error handling passenger disconnection:', error.message);
   }
@@ -60,6 +71,7 @@ async function exampleDriverAcceptance() {
   console.log('\n=== Example 4: Driver Acceptance ===');
   
   try {
+    // Using existing assign endpoint
     const result = await bookingService.handleBookingLifecycle({
       bookingId: '64f8a1b2c3d4e5f6a7b8c9d0',
       driverAccepted: true,
@@ -84,6 +96,7 @@ async function exampleDriverAcceptance() {
     
     console.log('Driver acceptance result:', result);
     console.log('✅ Driver acceptance handled successfully');
+    console.log('📡 API: POST /v1/bookings/:id/assign or POST /v1/bookings/:id/lifecycle');
   } catch (error) {
     console.error('❌ Error handling driver acceptance:', error.message);
   }
@@ -133,34 +146,27 @@ function exampleSocketEvents() {
   // Simulate socket events that would be sent from client
   const socketEvents = [
     {
-      event: 'passenger:cancel',
+      event: 'booking:cancel',
       data: { 
         bookingId: '64f8a1b2c3d4e5f6a7b8c9d0',
         reason: 'Found alternative transport'
       }
     },
     {
-      event: 'passenger:disconnect',
+      event: 'booking:disconnect',
       data: { bookingId: '64f8a1b2c3d4e5f6a7b8c9d1' }
     },
     {
-      event: 'passenger:reconnect',
+      event: 'booking:reconnect',
       data: { bookingId: '64f8a1b2c3d4e5f6a7b8c9d1' }
     },
     {
-      event: 'driver:accept',
+      event: 'booking:accept',
       data: {
         bookingId: '64f8a1b2c3d4e5f6a7b8c9d2',
         vehicleType: 'van',
         location: { latitude: 9.0192, longitude: 38.7525 },
         pricing: { fare: 45.00 }
-      }
-    },
-    {
-      event: 'driver:cancel',
-      data: {
-        bookingId: '64f8a1b2c3d4e5f6a7b8c9d3',
-        reason: 'Vehicle breakdown'
       }
     }
   ];
@@ -179,18 +185,20 @@ function exampleAPIEndpoints() {
   
   const apiExamples = [
     {
-      method: 'POST',
-      endpoint: '/v1/bookings/:id/cancel',
-      description: 'Cancel a booking (passenger or driver)',
-      auth: 'Bearer <passenger_token> or <driver_token>',
+      method: 'DELETE',
+      endpoint: '/v1/bookings/:id',
+      description: 'Cancel a booking (passenger) - Enhanced with lifecycle handler',
+      auth: 'Bearer <passenger_token>',
       body: { canceledReason: 'Optional reason' }
     },
     {
       method: 'POST',
-      endpoint: '/v1/bookings/:id/lifecycle-event',
-      description: 'Handle booking lifecycle events',
+      endpoint: '/v1/bookings/:id/lifecycle',
+      description: 'Handle booking lifecycle events - Enhanced',
       auth: 'Bearer <driver_token> or <passenger_token>',
       body: {
+        passengerCancels: true,
+        passengerDisconnected: true,
         driverAccepted: true,
         driverId: 'driver123',
         passengerId: 'passenger456',
@@ -201,17 +209,17 @@ function exampleAPIEndpoints() {
     },
     {
       method: 'POST',
-      endpoint: '/v1/bookings/:id/disconnect',
-      description: 'Handle passenger disconnection',
+      endpoint: '/v1/bookings/:id/assign',
+      description: 'Assign driver to booking - Enhanced with lifecycle handler',
       auth: 'Bearer <admin_token>',
-      body: {}
-    },
-    {
-      method: 'POST',
-      endpoint: '/v1/bookings/:id/reconnect',
-      description: 'Handle passenger reconnection',
-      auth: 'Bearer <passenger_token>',
-      body: {}
+      body: {
+        driverId: 'driver123',
+        dispatcherId: 'dispatcher456',
+        passengerId: 'passenger789',
+        vehicleType: 'mini',
+        location: { latitude: 9.0192, longitude: 38.7525 },
+        pricing: { fare: 25.50 }
+      }
     }
   ];
   

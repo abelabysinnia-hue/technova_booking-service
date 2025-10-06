@@ -21,14 +21,14 @@ When a passenger cancels a booking after a driver has already accepted it:
 
 **API Endpoint:**
 ```
-POST /v1/bookings/:id/cancel
+DELETE /v1/bookings/:id
 Authorization: Bearer <passenger_token>
 Body: { "canceledReason": "Optional reason" }
 ```
 
 **Socket Event:**
 ```javascript
-socket.emit('passenger:cancel', { 
+socket.emit('booking:cancel', { 
   bookingId: 'booking_id', 
   reason: 'Optional reason' 
 });
@@ -47,22 +47,20 @@ When a passenger disconnects from the socket after driver acceptance:
    - Clean up cache
 3. If passenger reconnects, clear the timeout
 
-**API Endpoints:**
+**API Endpoint:**
 ```
-POST /v1/bookings/:id/disconnect
-Authorization: Bearer <admin_token>
-
-POST /v1/bookings/:id/reconnect  
+POST /v1/bookings/:id/lifecycle
 Authorization: Bearer <passenger_token>
+Body: { "passengerDisconnected": true }
 ```
 
 **Socket Events:**
 ```javascript
 // Handle disconnection
-socket.emit('passenger:disconnect', { bookingId: 'booking_id' });
+socket.emit('booking:disconnect', { bookingId: 'booking_id' });
 
 // Handle reconnection
-socket.emit('passenger:reconnect', { bookingId: 'booking_id' });
+socket.emit('booking:reconnect', { bookingId: 'booking_id' });
 ```
 
 ### 3. Driver Acceptance
@@ -76,9 +74,20 @@ When a driver accepts a booking:
 4. Notify both passenger and accepting driver
 5. Clean up booking details from general cache
 
-**API Endpoint:**
+**API Endpoints:**
 ```
-POST /v1/bookings/:id/lifecycle-event
+POST /v1/bookings/:id/assign
+Authorization: Bearer <admin_token>
+Body: {
+  "driverId": "driver_id",
+  "dispatcherId": "dispatcher_id",
+  "passengerId": "passenger_id",
+  "vehicleType": "mini",
+  "location": { "latitude": 9.0192, "longitude": 38.7525 },
+  "pricing": { "fare": 25.50 }
+}
+
+POST /v1/bookings/:id/lifecycle
 Authorization: Bearer <driver_token>
 Body: {
   "driverAccepted": true,
@@ -92,7 +101,7 @@ Body: {
 
 **Socket Event:**
 ```javascript
-socket.emit('driver:accept', {
+socket.emit('booking:accept', {
   bookingId: 'booking_id',
   vehicleType: 'mini',
   location: { latitude: 9.0192, longitude: 38.7525 },
@@ -124,15 +133,29 @@ const DISCONNECT_TIMEOUT = 60000; // 60 seconds
 
 ## API Reference
 
-### Booking Lifecycle Event Handler
+### Existing Endpoints Enhanced
 
+#### 1. Cancel Booking (Enhanced)
 ```javascript
-POST /v1/bookings/:id/lifecycle-event
+DELETE /v1/bookings/:id
 ```
 
 **Request Body:**
 ```json
 {
+  "canceledReason": "string (optional)"
+}
+```
+
+#### 2. Booking Lifecycle (Enhanced)
+```javascript
+POST /v1/bookings/:id/lifecycle
+```
+
+**Request Body:**
+```json
+{
+  "status": "string",
   "passengerCancels": boolean,
   "passengerDisconnected": boolean,
   "driverAccepted": boolean,
@@ -147,20 +170,32 @@ POST /v1/bookings/:id/lifecycle-event
   "pricing": {
     "fare": number,
     "breakdown": object
-  }
+  },
+  "canceledReason": "string (optional)"
 }
 ```
 
-### Cancel Booking
-
+#### 3. Driver Assignment (Enhanced)
 ```javascript
-POST /v1/bookings/:id/cancel
+POST /v1/bookings/:id/assign
 ```
 
 **Request Body:**
 ```json
 {
-  "canceledReason": "string (optional)"
+  "driverId": "string",
+  "dispatcherId": "string",
+  "passengerId": "string",
+  "vehicleType": "string",
+  "location": {
+    "latitude": number,
+    "longitude": number,
+    "address": "string"
+  },
+  "pricing": {
+    "fare": number,
+    "breakdown": object
+  }
 }
 ```
 
@@ -170,22 +205,20 @@ POST /v1/bookings/:id/cancel
 
 | Event | Description | Data |
 |-------|-------------|------|
-| `passenger:cancel` | Passenger cancels booking | `{ bookingId, reason? }` |
-| `passenger:disconnect` | Handle passenger disconnection | `{ bookingId }` |
-| `passenger:reconnect` | Handle passenger reconnection | `{ bookingId }` |
-| `driver:accept` | Driver accepts booking | `{ bookingId, vehicleType?, location?, pricing? }` |
-| `driver:cancel` | Driver cancels booking | `{ bookingId, reason? }` |
+| `booking:cancel` | Passenger cancels booking | `{ bookingId, reason? }` |
+| `booking:disconnect` | Handle passenger disconnection | `{ bookingId }` |
+| `booking:reconnect` | Handle passenger reconnection | `{ bookingId }` |
+| `booking:accept` | Driver accepts booking | `{ bookingId, vehicleType?, location?, pricing? }` |
 
 ### Server to Client Events
 
 | Event | Description | Data |
 |-------|-------------|------|
 | `booking:notification` | Booking status notification | `{ message, status, bookingId, type }` |
-| `passenger:cancel:handled` | Cancellation processed | `{ success, bookingId, message }` |
-| `passenger:disconnect:handled` | Disconnection processed | `{ success, bookingId, message }` |
-| `passenger:reconnect:handled` | Reconnection processed | `{ success, bookingId, message }` |
-| `driver:accept:handled` | Acceptance processed | `{ success, bookingId, message }` |
-| `driver:cancel:handled` | Cancellation processed | `{ success, bookingId, message }` |
+| `booking:canceled` | Cancellation processed | `{ success, bookingId, message }` |
+| `booking:disconnect_handled` | Disconnection processed | `{ success, bookingId, message }` |
+| `booking:reconnect_handled` | Reconnection processed | `{ success, bookingId, message }` |
+| `booking:accepted` | Acceptance processed | `{ success, bookingId, message }` |
 
 ## Error Handling
 
