@@ -7,6 +7,7 @@ const { DriverEarnings, AdminEarnings, Commission } = require('../models/commiss
 const { Wallet, Transaction } = require('../models/common');
 const positionUpdateService = require('./../services/positionUpdate');
 const financeService = require('./financeService');
+const bookingLifecycleHandler = require('./bookingLifecycleHandler');
 
 async function estimateFare({ vehicleType = 'mini', pickup, dropoff }) {
   const distanceKm = geolib.getDistance(
@@ -523,6 +524,107 @@ async function rateDriver({ bookingId, passengerId, rating, comment }) {
   return { message: 'Driver rated successfully' };
 }
 
+/**
+ * Handle booking lifecycle events using the lifecycle handler
+ */
+async function handleBookingLifecycle(params) {
+  return await bookingLifecycleHandler.handleBookingLifecycle(params);
+}
+
+/**
+ * Cancel a booking (passenger or driver initiated)
+ */
+async function cancelBooking({ bookingId, canceledBy, canceledReason, requester }) {
+  try {
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      throw new Error('Booking not found');
+    }
+
+    // Check permissions
+    const userId = String(requester?.id);
+    const userType = requester?.type;
+    
+    if (userType === 'passenger' && String(booking.passengerId) !== userId) {
+      throw new Error('You can only cancel your own bookings');
+    }
+    
+    if (userType === 'driver' && String(booking.driverId) !== userId) {
+      throw new Error('You can only cancel bookings assigned to you');
+    }
+
+    // Use lifecycle handler for passenger cancellation
+    if (userType === 'passenger') {
+      await bookingLifecycleHandler.handleBookingLifecycle({
+        bookingId,
+        passengerCancels: true,
+        driverId: booking.driverId,
+        passengerId: booking.passengerId
+      });
+    } else if (userType === 'driver') {
+      // Handle driver cancellation
+      await bookingLifecycleHandler.updateBookingStatus({
+        id: bookingId,
+        requesterType: 'driver',
+        status: 'canceled',
+        current: 'canceled',
+        canceledBy: 'driver',
+        canceledReason: canceledReason || 'Driver canceled the booking'
+      });
+
+      // Notify passenger
+      await bookingLifecycleHandler.sendNotificationToPassenger(booking.passengerId, {
+        message: "The driver has canceled your booking.",
+        status: "canceled",
+        bookingId: bookingId,
+        type: 'booking_canceled_by_driver'
+      });
+    }
+
+    return { success: true, message: 'Booking canceled successfully' };
+
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Handle passenger disconnection
+ */
+async function handlePassengerDisconnection(bookingId) {
+  try {
+    const booking = await Booking.findById(bookingId);
+    if (!booking || booking.status !== 'accepted') {
+      return { success: false, message: 'Booking not found or not in accepted state' };
+    }
+
+    await bookingLifecycleHandler.handleBookingLifecycle({
+      bookingId,
+      passengerDisconnected: true,
+      driverAccepted: true,
+      driverId: booking.driverId,
+      passengerId: booking.passengerId
+    });
+
+    return { success: true, message: 'Passenger disconnection handled' };
+
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Handle passenger reconnection
+ */
+async function handlePassengerReconnection(bookingId) {
+  try {
+    bookingLifecycleHandler.handlePassengerReconnection(bookingId);
+    return { success: true, message: 'Passenger reconnection handled' };
+  } catch (error) {
+    throw error;
+  }
+}
+
 module.exports = {
   estimateFare,
   createBooking,
@@ -532,6 +634,10 @@ module.exports = {
   assignDriver,
   listNearbyBookings,
   ratePassenger,
-  rateDriver
+  rateDriver,
+  handleBookingLifecycle,
+  cancelBooking,
+  handlePassengerDisconnection,
+  handlePassengerReconnection
 };
 

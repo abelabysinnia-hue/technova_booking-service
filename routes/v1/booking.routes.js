@@ -31,6 +31,11 @@ router.post('/estimate', authenticate, authorize('admin','superadmin'), ctrl.est
 // Rating endpoints
 router.post('/:id/rate-passenger', authenticate, authorize('driver'), ctrl.ratePassenger);
 router.post('/:id/rate-driver', authenticate, authorize('passenger'), ctrl.rateDriver);
+// Lifecycle event endpoints
+router.post('/:id/cancel', authenticate, authorize('passenger','driver'), ctrl.cancel);
+router.post('/:id/lifecycle-event', authenticate, authorize('admin','superadmin','driver','passenger'), ctrl.lifecycleEvent);
+router.post('/:id/disconnect', authenticate, authorize('admin','superadmin'), ctrl.handleDisconnection);
+router.post('/:id/reconnect', authenticate, authorize('passenger'), ctrl.handleReconnection);
 // Passenger vehicle types
 router.get('/vehicle/types', authenticate, authorize('passenger'), (req, res) => res.json(VehicleTypeEnum));
 

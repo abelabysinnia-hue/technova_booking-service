@@ -187,3 +187,67 @@ exports.rateDriver = async (req, res) => {
     return res.json(result);
   } catch (e) { errorHandler(res, e); }
 }
+
+// Cancel booking (passenger or driver initiated)
+exports.cancel = async (req, res) => {
+  try {
+    const { canceledReason } = req.body;
+    const bookingId = req.params.id;
+    const result = await bookingService.cancelBooking({ 
+      bookingId, 
+      canceledReason, 
+      requester: req.user 
+    });
+    return res.json(result);
+  } catch (e) { errorHandler(res, e); }
+}
+
+// Handle booking lifecycle events
+exports.lifecycleEvent = async (req, res) => {
+  try {
+    const { 
+      passengerCancels, 
+      passengerDisconnected, 
+      driverAccepted, 
+      driverId, 
+      passengerId, 
+      vehicleType, 
+      location, 
+      pricing 
+    } = req.body;
+    
+    const bookingId = req.params.id;
+    
+    const result = await bookingService.handleBookingLifecycle({
+      bookingId,
+      passengerCancels,
+      passengerDisconnected,
+      driverAccepted,
+      driverId,
+      passengerId,
+      vehicleType,
+      location,
+      pricing
+    });
+    
+    return res.json({ success: true, message: 'Lifecycle event handled successfully' });
+  } catch (e) { errorHandler(res, e); }
+}
+
+// Handle passenger disconnection
+exports.handleDisconnection = async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const result = await bookingService.handlePassengerDisconnection(bookingId);
+    return res.json(result);
+  } catch (e) { errorHandler(res, e); }
+}
+
+// Handle passenger reconnection
+exports.handleReconnection = async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const result = await bookingService.handlePassengerReconnection(bookingId);
+    return res.json(result);
+  } catch (e) { errorHandler(res, e); }
+}

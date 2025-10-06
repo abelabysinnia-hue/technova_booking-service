@@ -2,6 +2,7 @@ const bookingSocket = require('./bookingSocket');
 const driverSocket = require('./driverSocket');
 const passengerSocket = require('./passengerSocket');
 const liveSocket = require('./liveSocket');
+const { attachBookingLifecycleSocketHandlers } = require('./bookingLifecycleSocket');
 const { socketAuth } = require('../utils/jwt');
 const { setIo } = require('./utils');
 const logger = require('../utils/logger');
@@ -9,6 +10,10 @@ const logger = require('../utils/logger');
 function attachSocketHandlers(io) {
   setIo(io);
   io.use(socketAuth);
+  
+  // Attach booking lifecycle socket handlers
+  attachBookingLifecycleSocketHandlers(io);
+  
   io.on('connection', (socket) => {
     try { logger.info('[socket] connected', { sid: socket.id, user: socket.user && { id: socket.user.id, type: socket.user.type } }); } catch (_) {}
     bookingSocket(io, socket);
