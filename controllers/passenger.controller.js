@@ -18,7 +18,17 @@ exports.list = async (req, res) => {
 exports.get = async (req, res) => {
   try {
     const { getPassengerById } = require('../integrations/userServiceClient');
-    const info = await getPassengerById(req.params.id, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
+    const paramId = String(req.params.id || '');
+    let externalId = paramId;
+    try {
+      const { Types } = require('mongoose');
+      if (Types.ObjectId.isValid(paramId)) {
+        const { Passenger } = require('../models/userModels');
+        const row = await Passenger.findById(paramId).select({ externalId: 1 }).lean();
+        if (row && row.externalId) externalId = String(row.externalId);
+      }
+    } catch (_) {}
+    const info = await getPassengerById(externalId, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
     if (!info) return res.status(404).json({ message: 'Passenger not found' });
     return res.json(info);
   } catch (e) { errorHandler(res, e); }
@@ -40,7 +50,7 @@ exports.getMyProfile = async (req, res) => {
   try {
     if (req.user.type !== 'passenger') return res.status(403).json({ message: 'Only passengers can access this endpoint' });
     const { getPassengerById } = require('../integrations/userServiceClient');
-    const passenger = await getPassengerById(req.user.id, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
+    const passenger = await getPassengerById(String(req.user.id), { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
     if (!passenger) return res.status(404).json({ message: 'Passenger not found' });
     return res.json(passenger);
   } catch (e) { errorHandler(res, e); }

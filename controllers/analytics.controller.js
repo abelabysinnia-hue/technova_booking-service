@@ -13,8 +13,9 @@ exports.getDashboardStats = async (req, res) => {
 
     // Total counts
     const totalRides = await Booking.countDocuments();
-    const totalEarnings = await Booking.aggregate([
-      { $match: { status: 'completed' } },
+    // Earnings are only from completed trips with a finalized fare
+    const totalEarningsAgg = await Booking.aggregate([
+      { $match: { status: 'completed', fareFinal: { $gt: 0 } } },
       { $group: { _id: null, total: { $sum: '$fareFinal' } } }
     ]);
     // Fetch user counts from external service
@@ -38,8 +39,8 @@ exports.getDashboardStats = async (req, res) => {
     const todayRides = await Booking.countDocuments({
       createdAt: { $gte: today }
     });
-    const todayEarnings = await Booking.aggregate([
-      { $match: { status: 'completed', createdAt: { $gte: today } } },
+    const todayEarningsAgg = await Booking.aggregate([
+      { $match: { status: 'completed', createdAt: { $gte: today }, fareFinal: { $gt: 0 } } },
       { $group: { _id: null, total: { $sum: '$fareFinal' } } }
     ]);
 
@@ -47,8 +48,8 @@ exports.getDashboardStats = async (req, res) => {
     const weekRides = await Booking.countDocuments({
       createdAt: { $gte: thisWeek }
     });
-    const weekEarnings = await Booking.aggregate([
-      { $match: { status: 'completed', createdAt: { $gte: thisWeek } } },
+    const weekEarningsAgg = await Booking.aggregate([
+      { $match: { status: 'completed', createdAt: { $gte: thisWeek }, fareFinal: { $gt: 0 } } },
       { $group: { _id: null, total: { $sum: '$fareFinal' } } }
     ]);
 
@@ -56,18 +57,22 @@ exports.getDashboardStats = async (req, res) => {
     const monthRides = await Booking.countDocuments({
       createdAt: { $gte: thisMonth }
     });
-    const monthEarnings = await Booking.aggregate([
-      { $match: { status: 'completed', createdAt: { $gte: thisMonth } } },
+    const monthEarningsAgg = await Booking.aggregate([
+      { $match: { status: 'completed', createdAt: { $gte: thisMonth }, fareFinal: { $gt: 0 } } },
       { $group: { _id: null, total: { $sum: '$fareFinal' } } }
     ]);
 
     // Commission stats
-    const totalCommission = await AdminEarnings.aggregate([
-      { $group: { _id: null, total: { $sum: '$commissionEarned' } } }
+    // Commission should be derived from completed trips in the period to avoid drift
+    const commissionRate = Number(process.env.COMMISSION_RATE || 15);
+    const commissionsAgg = await Booking.aggregate([
+      { $match: { status: 'completed', fareFinal: { $gt: 0 } } },
+      { $group: { _id: null, total: { $sum: '$fareFinal' } } }
     ]);
+    const totalCommissionVal = ((commissionsAgg[0]?.total || 0) * commissionRate) / 100;
 
     // Pending payouts
-    const pendingPayouts = await Payout.aggregate([
+    const pendingPayoutsAgg = await Payout.aggregate([
       { $match: { status: 'pending' } },
       { $group: { _id: null, total: { $sum: '$netPayout' } } }
     ]);
@@ -75,25 +80,25 @@ exports.getDashboardStats = async (req, res) => {
     res.json({
       overview: {
         totalRides,
-        totalEarnings: totalEarnings[0]?.total || 0,
+        totalEarnings: totalEarningsAgg[0]?.total || 0,
         totalUsers,
         totalDrivers,
         totalCars,
         totalComplaints,
-        totalCommission: totalCommission[0]?.total || 0,
-        pendingPayouts: pendingPayouts[0]?.total || 0
+        totalCommission: totalCommissionVal,
+        pendingPayouts: pendingPayoutsAgg[0]?.total || 0
       },
       today: {
         rides: todayRides,
-        earnings: todayEarnings[0]?.total || 0
+        earnings: todayEarningsAgg[0]?.total || 0
       },
       thisWeek: {
         rides: weekRides,
-        earnings: weekEarnings[0]?.total || 0
+        earnings: weekEarningsAgg[0]?.total || 0
       },
       thisMonth: {
         rides: monthRides,
-        earnings: monthEarnings[0]?.total || 0
+        earnings: monthEarningsAgg[0]?.total || 0
       }
     });
   } catch (e) {

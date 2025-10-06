@@ -19,7 +19,16 @@ const base = {
   get: async (req, res) => {
     try {
       const { getDriverById } = require('../integrations/userServiceClient');
-      const info = await getDriverById(req.params.id, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
+      const paramId = String(req.params.id || '');
+      let externalId = paramId;
+      try {
+        const { Types } = require('mongoose');
+        if (Types.ObjectId.isValid(paramId)) {
+          const row = await Driver.findById(paramId).select({ externalId: 1 }).lean();
+          if (row && row.externalId) externalId = String(row.externalId);
+        }
+      } catch (_) {}
+      const info = await getDriverById(externalId, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
       if (!info) return res.status(404).json({ message: 'Driver not found' });
       return res.json(info);
     } catch (e) {
