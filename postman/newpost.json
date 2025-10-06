@@ -3044,10 +3044,7 @@
     {
       "name": "Auth",
       "item": [
-        { "name": "Passenger Register", "request": { "method": "POST", "url": "{{baseUrl}}/v1/auth/passenger/register" } },
-        { "name": "Passenger Login", "request": { "method": "POST", "url": "{{baseUrl}}/v1/auth/passenger/login" } },
-        { "name": "Staff Login", "request": { "method": "POST", "url": "{{baseUrl}}/v1/auth/staff/login" } },
-        { "name": "Admin Login", "request": { "method": "POST", "url": "{{baseUrl}}/v1/auth/admin/login" } }
+        { "name": "Auth Health (External)", "request": { "method": "GET", "url": "{{baseUrl}}/v1/auth/health" } }
       ]
     },
     {

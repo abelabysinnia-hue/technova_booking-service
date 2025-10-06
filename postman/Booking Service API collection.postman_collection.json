@@ -7,6 +7,12 @@
 		"_exporter_id": "24624704",
 		"_collection_link": "https://lunar-eclipse-303269.postman.co/workspace/My-Workspace~2fca546d-3b99-4f54-8acb-523fdaa9f75b/collection/24624704-ea29e202-219b-4a33-b61d-5a0a92093db7?action=share&source=collection_link&creator=24624704"
 	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{ "key": "token", "value": "{{token}}", "type": "string" }
+		]
+	},
 	"item": [
 		{
 			"name": "🧩 Socket.IO Events",
@@ -249,11 +255,11 @@
 				}
 			]
 		},
-		{
-			"name": "🔐 Authentication",
-			"item": [
-				{
-					"name": "Passenger Login",
+        {
+            "name": "🔐 Authentication",
+            "item": [
+                {
+                    "name": "Auth Health (External)",
 					"event": [
 						{
 							"listen": "test",
@@ -272,8 +278,8 @@
 							}
 						}
 					],
-					"request": {
-						"method": "POST",
+                    "request": {
+                        "method": "GET",
 						"header": [
 							{
 								"key": "Content-Type",
@@ -284,23 +290,22 @@
 							"mode": "raw",
 							"raw": "{\n  \"email\": \"john.smith@example.com\",\n  \"password\": \"SecurePass123!\"\n}"
 						},
-						"url": {
-							"raw": "{{baseUrl}}/v1/auth/passenger/login",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"v1",
-								"auth",
-								"passenger",
-								"login"
-							]
-						}
+                        "url": {
+                            "raw": "{{baseUrl}}/v1/auth/health",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "auth",
+                                "health"
+                            ]
+                        }
 					},
 					"response": []
 				},
-				{
-					"name": "Staff Login",
+                {
+                    "name": "Auth Health (External)",
 					"event": [
 						{
 							"listen": "test",
@@ -320,8 +325,8 @@
 							}
 						}
 					],
-					"request": {
-						"method": "POST",
+                    "request": {
+                        "method": "GET",
 						"header": [
 							{
 								"key": "Content-Type",
@@ -332,23 +337,22 @@
 							"mode": "raw",
 							"raw": "{\n  \"username\": \"staff_dispatch\",\n  \"password\": \"StaffPass123!\"\n}"
 						},
-						"url": {
-							"raw": "{{baseurl}}/v1/auth/staff/login",
-							"host": [
-								"{{baseurl}}"
-							],
-							"path": [
-								"v1",
-								"auth",
-								"staff",
-								"login"
-							]
-						}
+                        "url": {
+                            "raw": "{{baseurl}}/v1/auth/health",
+                            "host": [
+                                "{{baseurl}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "auth",
+                                "health"
+                            ]
+                        }
 					},
 					"response": []
 				},
-				{
-					"name": "Admin Login",
+                {
+                    "name": "Auth Health (External)",
 					"event": [
 						{
 							"listen": "test",
@@ -368,8 +372,8 @@
 							}
 						}
 					],
-					"request": {
-						"method": "POST",
+                    "request": {
+                        "method": "GET",
 						"header": [
 							{
 								"key": "Content-Type",
@@ -380,22 +384,22 @@
 							"mode": "raw",
 							"raw": "{\n  \"username\": \"rootadmin\",\n  \"password\": \"admin123\"\n}"
 						},
-						"url": {
-							"raw": "{{baseurl}}/auth/admin/login",
-							"host": [
-								"{{baseurl}}"
-							],
-							"path": [
-								"auth",
-								"admin",
-								"login"
-							]
-						}
+                        "url": {
+                            "raw": "{{baseurl}}/v1/auth/health",
+                            "host": [
+                                "{{baseurl}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "auth",
+                                "health"
+                            ]
+                        }
 					},
 					"response": []
 				},
-				{
-					"name": "Staff Login",
+                {
+                    "name": "Auth Health (External)",
 					"event": [
 						{
 							"listen": "test",
@@ -415,8 +419,8 @@
 							}
 						}
 					],
-					"request": {
-						"method": "POST",
+                    "request": {
+                        "method": "GET",
 						"header": [
 							{
 								"key": "Content-Type",
@@ -427,51 +431,41 @@
 							"mode": "raw",
 							"raw": "{\n  \"username\": \"staff_user\",\n  \"password\": \"StaffPass123!\"\n}"
 						},
-						"url": {
-							"raw": "{{baseurl}}/v1/auth/staff/login",
-							"host": [
-								"{{baseurl}}"
-							],
-							"path": [
-								"v1",
-								"auth",
-								"staff",
-								"login"
-							]
-						}
+                        "url": {
+                            "raw": "{{baseurl}}/v1/auth/health",
+                            "host": [
+                                "{{baseurl}}"
+                            ],
+                            "path": [
+                                "v1",
+                                "auth",
+                                "health"
+                            ]
+                        }
 					},
 					"response": []
 				},
-				{
-					"name": "Driver login",
+                {
+                    "name": "Auth Health (External)",
 					"request": {
-						"method": "POST",
+                        "method": "GET",
 						"header": [],
-						"body": {
-							"mode": "raw",
-							"raw": "{\r\n\"email\": \"test1@example.com\",\r\n\"password\": \"123456\"\r\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
 						"url": {
-							"raw": "{{baseurl}}/auth/driver/login",
+                            "raw": "{{baseurl}}/v1/auth/health",
 							"host": [
 								"{{baseurl}}"
 							],
 							"path": [
-								"auth",
-								"driver",
-								"login"
+                                "v1",
+                                "auth",
+                                "health"
 							]
 						}
 					},
 					"response": []
-				}
-			],
-			"description": "Authentication endpoints for all user types"
+                }
+            ],
+            "description": "External auth: obtain JWT via provider; this service verifies tokens only"
 		},
 		{
 			"name": "👤 Passenger APIs",
