@@ -37,7 +37,7 @@ exports.getDashboardStats = async (req, res) => {
 
     // Today's stats
     const todayRides = await Booking.countDocuments({
-      createdAt: { $gte: today }
+      createdAt: { $gte: today },
     });
     const todayEarningsAgg = await Booking.aggregate([
       { $match: { status: 'completed', createdAt: { $gte: today }, fareFinal: { $gt: 0 } } },
@@ -46,7 +46,7 @@ exports.getDashboardStats = async (req, res) => {
 
     // This week's stats
     const weekRides = await Booking.countDocuments({
-      createdAt: { $gte: thisWeek }
+      createdAt: { $gte: thisWeek },
     });
     const weekEarningsAgg = await Booking.aggregate([
       { $match: { status: 'completed', createdAt: { $gte: thisWeek }, fareFinal: { $gt: 0 } } },
@@ -55,7 +55,7 @@ exports.getDashboardStats = async (req, res) => {
 
     // This month's stats
     const monthRides = await Booking.countDocuments({
-      createdAt: { $gte: thisMonth }
+      createdAt: { $gte: thisMonth },
     });
     const monthEarningsAgg = await Booking.aggregate([
       { $match: { status: 'completed', createdAt: { $gte: thisMonth }, fareFinal: { $gt: 0 } } },

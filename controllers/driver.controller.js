@@ -4,15 +4,20 @@ const driverService = require('../services/driverService');
 const driverEvents = require('../events/driverEvents');
 const errorHandler = require('../utils/errorHandler');
 const paymentService = require('../services/paymentService');
+const logger = require('../utils/logger');
 
 const base = {
   ...crudController(Driver),
   list: async (req, res) => {
     try {
       const { listDrivers } = require('../integrations/userServiceClient');
-      const rows = await listDrivers(req.query || {}, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
+      const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+      logger.info('[drivers.list] forwarding to external service', { query: req.query, hasAuth: !!headers });
+      const rows = await listDrivers(req.query || {}, { headers });
+      logger.info('[drivers.list] external response count', { count: Array.isArray(rows) ? rows.length : -1 });
       return res.json({ drivers: rows });
     } catch (e) {
+      logger.error('[drivers.list] error', e);
       return res.status(500).json({ message: `Failed to retrieve Driver list: ${e.message}` });
     }
   },
@@ -28,10 +33,14 @@ const base = {
           if (row && row.externalId) externalId = String(row.externalId);
         }
       } catch (_) {}
-      const info = await getDriverById(externalId, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
+      const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+      logger.info('[drivers.get] resolving id', { paramId, externalId, hasAuth: !!headers });
+      const info = await getDriverById(externalId, { headers });
+      logger.info('[drivers.get] external response', { found: !!info, id: externalId });
       if (!info) return res.status(404).json({ message: 'Driver not found' });
       return res.json(info);
     } catch (e) {
+      logger.error('[drivers.get] error', e);
       return res.status(500).json({ message: `Failed to retrieve Driver: ${e.message}` });
     }
   }

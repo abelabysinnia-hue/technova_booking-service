@@ -1,5 +1,6 @@
 const passengerService = require('../services/passengerService');
 const errorHandler = require('../utils/errorHandler');
+const logger = require('../utils/logger');
 
 exports.create = async (req, res) => {
   try {
@@ -10,7 +11,10 @@ exports.create = async (req, res) => {
 exports.list = async (req, res) => {
   try {
     const { listPassengers } = require('../integrations/userServiceClient');
-    const rows = await listPassengers(req.query || {}, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
+    const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+    logger.info('[passengers.list] forwarding to external service', { query: req.query, hasAuth: !!headers });
+    const rows = await listPassengers(req.query || {}, { headers });
+    logger.info('[passengers.list] external response count', { count: Array.isArray(rows) ? rows.length : -1 });
     return res.json(rows);
   } catch (e) { errorHandler(res, e); }
 };
@@ -28,7 +32,10 @@ exports.get = async (req, res) => {
         if (row && row.externalId) externalId = String(row.externalId);
       }
     } catch (_) {}
-    const info = await getPassengerById(externalId, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
+    const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+    logger.info('[passengers.get] resolving id', { paramId, externalId, hasAuth: !!headers });
+    const info = await getPassengerById(externalId, { headers });
+    logger.info('[passengers.get] external response', { found: !!info, id: externalId });
     if (!info) return res.status(404).json({ message: 'Passenger not found' });
     return res.json(info);
   } catch (e) { errorHandler(res, e); }
@@ -50,7 +57,9 @@ exports.getMyProfile = async (req, res) => {
   try {
     if (req.user.type !== 'passenger') return res.status(403).json({ message: 'Only passengers can access this endpoint' });
     const { getPassengerById } = require('../integrations/userServiceClient');
-    const passenger = await getPassengerById(String(req.user.id), { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
+    const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+    logger.info('[passengers.me] fetching external profile', { userId: String(req.user.id), hasAuth: !!headers });
+    const passenger = await getPassengerById(String(req.user.id), { headers });
     if (!passenger) return res.status(404).json({ message: 'Passenger not found' });
     return res.json(passenger);
   } catch (e) { errorHandler(res, e); }
