@@ -28,7 +28,7 @@ Body: { "canceledReason": "Optional reason" }
 
 **Socket Event:**
 ```javascript
-socket.emit('booking:cancel', { 
+socket.emit('booking_cancel', { 
   bookingId: 'booking_id', 
   reason: 'Optional reason' 
 });
@@ -56,11 +56,17 @@ Body: { "passengerDisconnected": true }
 
 **Socket Events:**
 ```javascript
-// Handle disconnection
-socket.emit('booking:disconnect', { bookingId: 'booking_id' });
+// Handle disconnection (via lifecycle endpoint)
+socket.emit('booking_lifecycle', { 
+  bookingId: 'booking_id',
+  passengerDisconnected: true 
+});
 
-// Handle reconnection
-socket.emit('booking:reconnect', { bookingId: 'booking_id' });
+// Handle reconnection (via lifecycle endpoint)
+socket.emit('booking_lifecycle', { 
+  bookingId: 'booking_id',
+  passengerReconnected: true 
+});
 ```
 
 ### 3. Driver Acceptance
@@ -101,7 +107,7 @@ Body: {
 
 **Socket Event:**
 ```javascript
-socket.emit('booking:accept', {
+socket.emit('booking_accept', {
   bookingId: 'booking_id',
   vehicleType: 'mini',
   location: { latitude: 9.0192, longitude: 38.7525 },
@@ -201,24 +207,21 @@ POST /v1/bookings/:id/assign
 
 ## Socket Events
 
-### Client to Server Events
+### Enhanced Existing Socket Events
+
+| Event | Description | Data | Enhancement |
+|-------|-------------|------|-------------|
+| `booking_cancel` | Cancel booking (enhanced) | `{ bookingId, reason? }` | Now uses lifecycle handler for proper flow |
+| `booking_accept` | Driver accepts booking (enhanced) | `{ bookingId, vehicleType?, location?, pricing? }` | Now uses lifecycle handler for notifications |
+| `booking_lifecycle` | Handle lifecycle events | `{ bookingId, passengerDisconnected?, driverAccepted? }` | New data fields for lifecycle scenarios |
+
+### Server to Client Events (Existing)
 
 | Event | Description | Data |
 |-------|-------------|------|
-| `booking:cancel` | Passenger cancels booking | `{ bookingId, reason? }` |
-| `booking:disconnect` | Handle passenger disconnection | `{ bookingId }` |
-| `booking:reconnect` | Handle passenger reconnection | `{ bookingId }` |
-| `booking:accept` | Driver accepts booking | `{ bookingId, vehicleType?, location?, pricing? }` |
-
-### Server to Client Events
-
-| Event | Description | Data |
-|-------|-------------|------|
-| `booking:notification` | Booking status notification | `{ message, status, bookingId, type }` |
-| `booking:canceled` | Cancellation processed | `{ success, bookingId, message }` |
-| `booking:disconnect_handled` | Disconnection processed | `{ success, bookingId, message }` |
-| `booking:reconnect_handled` | Reconnection processed | `{ success, bookingId, message }` |
-| `booking:accepted` | Acceptance processed | `{ success, bookingId, message }` |
+| `booking:update` | Booking status update | `{ status, bookingId, driverId?, acceptedAt? }` |
+| `booking:assigned` | Booking assigned to driver | `{ bookingId, driverId }` |
+| `booking_error` | Error notification | `{ message, source, bookingId? }` |
 
 ## Error Handling
 

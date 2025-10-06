@@ -143,40 +143,43 @@ async function exampleDirectLifecycleHandler() {
 function exampleSocketEvents() {
   console.log('\n=== Example 6: Socket Events ===');
   
-  // Simulate socket events that would be sent from client
+  // Simulate enhanced existing socket events
   const socketEvents = [
     {
-      event: 'booking:cancel',
+      event: 'booking_cancel',
       data: { 
         bookingId: '64f8a1b2c3d4e5f6a7b8c9d0',
         reason: 'Found alternative transport'
-      }
+      },
+      enhancement: 'Now uses lifecycle handler for proper cancellation flow'
     },
     {
-      event: 'booking:disconnect',
-      data: { bookingId: '64f8a1b2c3d4e5f6a7b8c9d1' }
-    },
-    {
-      event: 'booking:reconnect',
-      data: { bookingId: '64f8a1b2c3d4e5f6a7b8c9d1' }
-    },
-    {
-      event: 'booking:accept',
+      event: 'booking_accept',
       data: {
         bookingId: '64f8a1b2c3d4e5f6a7b8c9d2',
         vehicleType: 'van',
         location: { latitude: 9.0192, longitude: 38.7525 },
         pricing: { fare: 45.00 }
-      }
+      },
+      enhancement: 'Now uses lifecycle handler for notifications and cleanup'
+    },
+    {
+      event: 'booking_lifecycle',
+      data: {
+        bookingId: '64f8a1b2c3d4e5f6a7b8c9d3',
+        passengerDisconnected: true
+      },
+      enhancement: 'New data fields for lifecycle scenarios'
     }
   ];
   
-  console.log('Socket events that would be handled:');
+  console.log('Enhanced existing socket events:');
   socketEvents.forEach((event, index) => {
     console.log(`${index + 1}. ${event.event}:`, event.data);
+    console.log(`   Enhancement: ${event.enhancement}`);
   });
   
-  console.log('✅ Socket events documented');
+  console.log('✅ Enhanced existing socket events documented');
 }
 
 // Example 7: API endpoint usage

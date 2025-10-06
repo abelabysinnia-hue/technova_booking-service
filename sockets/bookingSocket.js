@@ -165,18 +165,36 @@ module.exports = (io, socket) => {
     }
   });
 
-  // booking_accept
+  // booking_accept - Enhanced with lifecycle handler
   socket.on('booking_accept', async (payload) => {
     try { logger.info('[socket<-driver] booking_accept', { sid: socket.id, userId: socket.user && socket.user.id, payload }); } catch (_) {}
     try {
       const data = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
       const bookingId = String(data.bookingId || '');
+      const vehicleType = data.vehicleType;
+      const location = data.location;
+      const pricing = data.pricing;
       if (!socket.user || String(socket.user.type).toLowerCase() !== 'driver' || !socket.user.id) {
         return socket.emit('booking_error', { message: 'Unauthorized: driver token required', bookingId });
       }
       if (!bookingId) return socket.emit('booking_error', { message: 'bookingId is required' });
 
-      // Only allow accept transition via lifecycle update in service
+      // Get booking details first
+      const booking = await Booking.findById(bookingId);
+      if (!booking) return socket.emit('booking_error', { message: 'Booking not found', bookingId });
+
+      // Use lifecycle handler for driver acceptance
+      await bookingService.handleBookingLifecycle({
+        bookingId,
+        driverAccepted: true,
+        driverId: String(socket.user.id),
+        passengerId: String(booking.passengerId),
+        vehicleType: vehicleType || booking.vehicleType,
+        location,
+        pricing
+      });
+
+      // Also call the original lifecycle update for database consistency
       const updated = await bookingService.updateBookingLifecycle({ requester: { ...socket.user, type: String(socket.user.type || '').toLowerCase() }, id: bookingId, status: 'accepted' });
       try { logger.info('[booking_accept] lifecycle updated', { bookingId: String(updated._id), status: updated.status, driverId: updated.driverId }); } catch (_) {}
       const room = `booking:${String(updated._id)}`;
@@ -293,7 +311,7 @@ module.exports = (io, socket) => {
     }
   });
 
-  // booking_cancel
+  // booking_cancel - Enhanced with lifecycle handler
   socket.on('booking_cancel', async (payload) => {
     try { logger.info('[socket<-user] booking_cancel', { sid: socket.id, userId: socket.user && socket.user.id, payload }); } catch (_) {}
     try {
@@ -302,10 +320,20 @@ module.exports = (io, socket) => {
       const reason = data.reason;
       if (!socket.user || !socket.user.type) return socket.emit('booking_error', { message: 'Unauthorized: user token required', bookingId });
       if (!bookingId) return socket.emit('booking_error', { message: 'bookingId is required', bookingId });
-      const updated = await bookingService.updateBookingLifecycle({ requester: socket.user, id: bookingId, status: 'canceled' });
-      bookingEvents.emitBookingUpdate(String(updated._id), { status: 'canceled', canceledBy: String(socket.user.type).toLowerCase(), canceledReason: reason });
-      try { logger.info('[socket->room] booking:update canceled', { bookingId: String(updated._id), by: String(socket.user.type).toLowerCase() }); } catch (_) {}
-    } catch (err) {}
+      
+      // Use lifecycle handler for proper cancellation flow
+      const result = await bookingService.cancelBooking({
+        bookingId,
+        canceledReason: reason,
+        requester: socket.user
+      });
+      
+      bookingEvents.emitBookingUpdate(bookingId, { status: 'canceled', canceledBy: String(socket.user.type).toLowerCase(), canceledReason: reason });
+      try { logger.info('[socket->room] booking:update canceled', { bookingId, by: String(socket.user.type).toLowerCase() }); } catch (_) {}
+    } catch (err) {
+      logger.error('[booking_cancel] error', err);
+      socket.emit('booking_error', { message: 'Failed to cancel booking', source: 'booking_cancel' });
+    }
   });
 
   // trip_started
@@ -417,105 +445,4 @@ module.exports = (io, socket) => {
     }
   });
 
-  // booking:cancel - handle passenger cancellation
-  socket.on('booking:cancel', async (payload) => {
-    try { logger.info('[socket<-passenger] booking:cancel', { sid: socket.id, userId: socket.user && socket.user.id }); } catch (_) {}
-    try {
-      const data = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
-      if (!socket.user || String(socket.user.type).toLowerCase() !== 'passenger') {
-        return socket.emit('booking_error', { message: 'Unauthorized: passenger token required' });
-      }
-      const bookingId = String(data.bookingId || '');
-      const reason = data.reason || 'Passenger requested cancellation';
-      if (!bookingId) return socket.emit('booking_error', { message: 'bookingId is required', source: 'booking:cancel' });
-      
-      const result = await bookingService.cancelBooking({
-        bookingId,
-        canceledReason: reason,
-        requester: socket.user
-      });
-      
-      socket.emit('booking:canceled', { success: true, bookingId, message: 'Booking canceled successfully' });
-      try { logger.info('[socket->passenger] booking:canceled', { sid: socket.id, bookingId }); } catch (_) {}
-    } catch (err) {
-      logger.error('[booking:cancel] error', err);
-      socket.emit('booking_error', { message: 'Failed to cancel booking', source: 'booking:cancel' });
-    }
-  });
-
-  // booking:accept - handle driver acceptance
-  socket.on('booking:accept', async (payload) => {
-    try { logger.info('[socket<-driver] booking:accept', { sid: socket.id, userId: socket.user && socket.user.id }); } catch (_) {}
-    try {
-      const data = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
-      if (!socket.user || String(socket.user.type).toLowerCase() !== 'driver') {
-        return socket.emit('booking_error', { message: 'Unauthorized: driver token required' });
-      }
-      const bookingId = String(data.bookingId || '');
-      const vehicleType = data.vehicleType;
-      const location = data.location;
-      const pricing = data.pricing;
-      if (!bookingId) return socket.emit('booking_error', { message: 'bookingId is required', source: 'booking:accept' });
-      
-      // Get booking details first
-      const booking = await Booking.findById(bookingId);
-      if (!booking) return socket.emit('booking_error', { message: 'Booking not found', source: 'booking:accept' });
-      
-      await bookingService.handleBookingLifecycle({
-        bookingId,
-        driverAccepted: true,
-        driverId: String(socket.user.id),
-        passengerId: String(booking.passengerId),
-        vehicleType: vehicleType || booking.vehicleType,
-        location,
-        pricing
-      });
-      
-      socket.emit('booking:accepted', { success: true, bookingId, message: 'Booking accepted successfully' });
-      try { logger.info('[socket->driver] booking:accepted', { sid: socket.id, bookingId }); } catch (_) {}
-    } catch (err) {
-      logger.error('[booking:accept] error', err);
-      socket.emit('booking_error', { message: 'Failed to accept booking', source: 'booking:accept' });
-    }
-  });
-
-  // booking:disconnect - handle passenger disconnection
-  socket.on('booking:disconnect', async (payload) => {
-    try { logger.info('[socket<-passenger] booking:disconnect', { sid: socket.id, userId: socket.user && socket.user.id }); } catch (_) {}
-    try {
-      const data = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
-      if (!socket.user || String(socket.user.type).toLowerCase() !== 'passenger') {
-        return socket.emit('booking_error', { message: 'Unauthorized: passenger token required' });
-      }
-      const bookingId = String(data.bookingId || '');
-      if (!bookingId) return socket.emit('booking_error', { message: 'bookingId is required', source: 'booking:disconnect' });
-      
-      const result = await bookingService.handlePassengerDisconnection(bookingId);
-      socket.emit('booking:disconnect_handled', { success: true, bookingId, message: 'Disconnection handled' });
-      try { logger.info('[socket->passenger] booking:disconnect_handled', { sid: socket.id, bookingId }); } catch (_) {}
-    } catch (err) {
-      logger.error('[booking:disconnect] error', err);
-      socket.emit('booking_error', { message: 'Failed to handle disconnection', source: 'booking:disconnect' });
-    }
-  });
-
-  // booking:reconnect - handle passenger reconnection
-  socket.on('booking:reconnect', async (payload) => {
-    try { logger.info('[socket<-passenger] booking:reconnect', { sid: socket.id, userId: socket.user && socket.user.id }); } catch (_) {}
-    try {
-      const data = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
-      if (!socket.user || String(socket.user.type).toLowerCase() !== 'passenger') {
-        return socket.emit('booking_error', { message: 'Unauthorized: passenger token required' });
-      }
-      const bookingId = String(data.bookingId || '');
-      if (!bookingId) return socket.emit('booking_error', { message: 'bookingId is required', source: 'booking:reconnect' });
-      
-      const result = await bookingService.handlePassengerReconnection(bookingId);
-      socket.emit('booking:reconnect_handled', { success: true, bookingId, message: 'Reconnection handled' });
-      try { logger.info('[socket->passenger] booking:reconnect_handled', { sid: socket.id, bookingId }); } catch (_) {}
-    } catch (err) {
-      logger.error('[booking:reconnect] error', err);
-      socket.emit('booking_error', { message: 'Failed to handle reconnection', source: 'booking:reconnect' });
-    }
-  });
 };
