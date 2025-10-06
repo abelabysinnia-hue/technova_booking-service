@@ -20,7 +20,7 @@
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dayjs": "^1.11.15",
-    "dotenv": "^17.2.1",
+    "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-rate-limit": "^8.0.1",
     "geolib": "^3.3.4",
@@ -36,8 +36,8 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "mocha": "^10.7.3",
     "nodemon": "^3.1.10",
-    "npm-run-all": "^4.1.5",
-    "mocha": "^10.7.3"
+    "npm-run-all": "^4.1.5"
   }
 }
