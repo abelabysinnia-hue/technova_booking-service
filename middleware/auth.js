@@ -59,7 +59,9 @@ const authenticate = async (req, res, next) => {
     }
     req.user = decoded; 
     if (process.env.AUTH_DEBUG === '1') {
-      console.log('✅ Token valid:', { id: decoded.id, type: decoded.type, exp: new Date(decoded.exp * 1000) });
+      const id = decoded?.id || decoded?.sub || decoded?.user?.id || decoded?.driver?.id;
+      const type = decoded?.type || decoded?.userType || decoded?.user?.type || decoded?.role;
+      console.log('✅ Token valid:', { id, type, exp: decoded?.exp ? new Date(decoded.exp * 1000) : undefined });
     }
     next();
   } catch (error) {

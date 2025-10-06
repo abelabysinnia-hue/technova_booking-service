@@ -1,16 +1,35 @@
 const jwt = require('jsonwebtoken');
+const axios = require('axios');
 require('dotenv').config();
 
-function generateUserInfoToken(user, type, roles = [], permissions = []) {
-  const payload = {
-    id: user.id || user._id || user._doc?._id,
-    type,
-    roles,
-    permissions
-  };
-  const secret = process.env.JWT_SECRET || 'secret';
-  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
-  return jwt.sign(payload, secret, { expiresIn });
+// Minimal JWKS cache for socket verification (mirrors middleware/auth.js behavior)
+const jwksCache = { keys: {}, fetchedAt: 0 };
+async function getSigningKey(kid) {
+  const jwksUrl = process.env.AUTH_JWKS_URL;
+  if (!jwksUrl) return null;
+  const now = Date.now();
+  if (
+    jwksCache.fetchedAt &&
+    now - jwksCache.fetchedAt < 5 * 60 * 1000 &&
+    jwksCache.keys[kid]
+  ) {
+    return jwksCache.keys[kid];
+  }
+  try {
+    const res = await axios.get(jwksUrl);
+    const data = res.data || {};
+    const keys = Array.isArray(data.keys) ? data.keys : [];
+    jwksCache.keys = {};
+    keys.forEach((k) => {
+      if (k.kid && k.x5c && k.x5c[0]) {
+        jwksCache.keys[k.kid] = `-----BEGIN CERTIFICATE-----\n${k.x5c[0]}\n-----END CERTIFICATE-----\n`;
+      }
+    });
+    jwksCache.fetchedAt = now;
+  } catch (_) {
+    return null;
+  }
+  return jwksCache.keys[kid] || null;
 }
 
 function socketAuth(socket, next) {
@@ -22,7 +41,28 @@ function socketAuth(socket, next) {
     const token = String(raw)
       .replace(/^\s+|\s+$/g, '')
       .replace(/^(Bearer|JWT|Token)\s+/i, '');
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    let decoded;
+    if (process.env.AUTH_JWKS_URL) {
+      // Verify via JWKS (RS256)
+      decoded = jwt.verify(
+        token,
+        async (header, cb) => {
+          try {
+            const cert = await getSigningKey(header.kid);
+            if (!cert) return cb(new Error('Signing key not found'));
+            cb(null, cert);
+          } catch (e) { cb(e); }
+        },
+        {
+          algorithms: ['RS256'],
+          audience: process.env.AUTH_AUDIENCE || process.env.JWT_AUDIENCE || undefined,
+          issuer: process.env.AUTH_ISSUER || process.env.JWT_ISSUER || undefined
+        }
+      );
+    } else {
+      // HMAC fallback
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    }
     // Prefer nested user/driver fields if present, then fall back to top-level claims
     const top = decoded || {};
     const userObj = (decoded && decoded.user) || {};
@@ -81,5 +121,5 @@ function socketAuth(socket, next) {
   }
 }
 
-module.exports = { generateUserInfoToken, socketAuth };
+module.exports = { socketAuth };
 
