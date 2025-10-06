@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../utils/logger');
 
 function buildUrlFromTemplate(template, params) {
   if (!template) return null;
@@ -24,14 +25,35 @@ function getAuthHeaders(tokenOrHeader) {
 
 async function httpGet(url, headers) {
   const timeout = parseInt(process.env.USER_SERVICE_TIMEOUT_MS || process.env.HTTP_TIMEOUT_MS || '5000');
-  const res = await axios.get(url, { headers, timeout });
-  return res.data;
+  const safeHeaders = headers && headers.Authorization ? { hasAuth: true } : { hasAuth: false };
+  try {
+    logger.info('[external.httpGet] ->', { url, ...safeHeaders, timeout });
+    const res = await axios.get(url, { headers, timeout });
+    logger.info('[external.httpGet] <-', { url, status: res.status });
+    return res.data;
+  } catch (e) {
+    const status = e.response?.status;
+    const message = e.response?.data?.message || e.message;
+    logger.error('[external.httpGet] x', { url, status, message });
+    throw e;
+  }
 }
 
 async function httpPost(url, body, headers) {
   const timeout = parseInt(process.env.USER_SERVICE_TIMEOUT_MS || process.env.HTTP_TIMEOUT_MS || '5000');
-  const res = await axios.post(url, body, { headers: { 'Content-Type': 'application/json', ...(headers || {}) }, timeout });
-  return res.data;
+  const hdrs = { 'Content-Type': 'application/json', ...(headers || {}) };
+  const safeHeaders = hdrs.Authorization ? { hasAuth: true } : { hasAuth: false };
+  try {
+    logger.info('[external.httpPost] ->', { url, ...safeHeaders, timeout });
+    const res = await axios.post(url, body, { headers: hdrs, timeout });
+    logger.info('[external.httpPost] <-', { url, status: res.status });
+    return res.data;
+  } catch (e) {
+    const status = e.response?.status;
+    const message = e.response?.data?.message || e.message;
+    logger.error('[external.httpPost] x', { url, status, message });
+    throw e;
+  }
 }
 
 // Low-level helpers driven by env configuration
@@ -48,10 +70,12 @@ async function getPassengerDetails(id, token) {
   try {
     const tpl = getTemplate('PASSENGER_LOOKUP_URL_TEMPLATE') || `${getAuthBase()}/passengers/{id}`;
     const url = buildUrlFromTemplate(tpl, { id });
+    logger.info('[external.passenger.get] request', { id: String(id), url });
     const data = await httpGet(url, getAuthHeaders(token));
     const u = data?.data || data?.user || data?.passenger || data;
     return { success: true, user: { id: String(u.id || u._id || id), name: u.name, phone: u.phone, email: u.email, externalId: u.externalId } };
   } catch (e) {
+    logger.error('[external.passenger.get] error', { id: String(id), message: e.response?.data?.message || e.message });
     return { success: false, message: e.response?.data?.message || e.message };
   }
 }
@@ -60,10 +84,12 @@ async function getDriverDetails(id, token) {
   try {
     const tpl = getTemplate('DRIVER_LOOKUP_URL_TEMPLATE') || `${getAuthBase()}/drivers/{id}`;
     const url = buildUrlFromTemplate(tpl, { id });
+    logger.info('[external.driver.get] request', { id: String(id), url });
     const data = await httpGet(url, getAuthHeaders(token));
     const u = data?.data || data?.user || data?.driver || data;
     return { success: true, user: { id: String(u.id || u._id || id), name: u.name, phone: u.phone, email: u.email, externalId: u.externalId, vehicleType: u.vehicleType, carPlate: u.carPlate, carModel: u.carModel, carColor: u.carColor, rating: u.rating, available: u.available, lastKnownLocation: u.lastKnownLocation, paymentPreference: u.paymentPreference,} };
   } catch (e) {
+    logger.error('[external.driver.get] error', { id: String(id), message: e.response?.data?.message || e.message });
     return { success: false, message: e.response?.data?.message || e.message };
   }
 }
@@ -71,10 +97,6 @@ async function getDriverDetails(id, token) {
 async function getDriverById(id, options) {
   const token = options && options.headers ? options.headers.Authorization : undefined;
   let res = await getDriverDetails(id, token);
-  if (!res.success) {
-    // Fallback to service bearer if provided
-    res = await getDriverDetails(id, undefined);
-  }
   if (!res.success) return null;
   return {
     id: String(res.user.id),
@@ -114,11 +136,7 @@ async function getDriversByIds(ids = [], token) {
     const data = await httpPost(url, { ids }, getAuthHeaders(token));
     const arr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
     return arr.map(u => ({ id: String(u.id || u._id || ''), name: u.name, phone: u.phone, email: u.email, vehicleType: u.vehicleType, carPlate: u.carPlate, rating: u.rating, available: u.available, paymentPreference: u.paymentPreference }));
-  } catch (e) {
-    // Fallback per-id with internal fallback in getDriverById (will try service bearer)
-    const results = await Promise.all((ids || []).map(id => getDriverById(id, {})));
-    return results.filter(Boolean);
-  }
+  } catch (e) { return []; }
 }
 
 async function listDrivers(query = {}, options) {
@@ -130,17 +148,7 @@ async function listDrivers(query = {}, options) {
     let data = await httpGet(url.toString(), getAuthHeaders(token));
     const arr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
     return arr.map(u => ({ id: String(u.id || u._id || ''), name: u.name, phone: u.phone, email: u.email, vehicleType: u.vehicleType, carPlate: u.carPlate, rating: u.rating, available: u.available, paymentPreference: u.paymentPreference }));
-  } catch (_) {
-    try {
-      // Fallback with service bearer
-      const base = getAuthBase();
-      const url = new URL(`${base}/drivers`);
-      Object.entries(query || {}).forEach(([k, v]) => { if (v != null) url.searchParams.set(k, v); });
-      const data = await httpGet(url.toString(), getAuthHeaders(undefined));
-      const arr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-      return arr.map(u => ({ id: String(u.id || u._id || ''), name: u.name, phone: u.phone, email: u.email, vehicleType: u.vehicleType, carPlate: u.carPlate, rating: u.rating, available: u.available, paymentPreference: u.paymentPreference }));
-    } catch (__) { return []; }
-  }
+  } catch (_) { return []; }
 }
 
 async function listPassengers(query = {}, options) {
