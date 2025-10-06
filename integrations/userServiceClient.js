@@ -61,8 +61,19 @@ function getAuthBase() {
   return (process.env.AUTH_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
 }
 
+// Replace ${ENV_VAR} placeholders in templates with environment values
+function expandEnvPlaceholders(template) {
+  if (!template) return template;
+  return template.replace(/\$\{([A-Z0-9_]+)\}/g, (match, key) => {
+    if (key === 'AUTH_BASE_URL') return getAuthBase();
+    const value = process.env[key];
+    return value != null ? String(value) : '';
+  });
+}
+
 function getTemplate(name) {
-  return process.env[name] || null;
+  const tpl = process.env[name] || null;
+  return expandEnvPlaceholders(tpl);
 }
 
 // External-only API (auth service)
