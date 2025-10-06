@@ -3,46 +3,44 @@ const errorHandler = require('../utils/errorHandler');
 
 exports.create = async (req, res) => {
   try {
-    const result = await passengerService.create(req.body || {});
-    return res.status(201).json(result);
+    return res.status(501).json({ message: 'Passenger creation is managed by the external user service.' });
   } catch (e) { errorHandler(res, e); }
 };
 
 exports.list = async (req, res) => {
   try {
-    const rows = await passengerService.list();
+    const { listPassengers } = require('../integrations/userServiceClient');
+    const rows = await listPassengers(req.query || {}, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
     return res.json(rows);
   } catch (e) { errorHandler(res, e); }
 };
 
 exports.get = async (req, res) => {
   try {
-    const row = await passengerService.get(req.params.id);
-    if (!row) return res.status(404).json({ message: 'Passenger not found' });
-    return res.json(row);
+    const { getPassengerById } = require('../integrations/userServiceClient');
+    const info = await getPassengerById(req.params.id, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
+    if (!info) return res.status(404).json({ message: 'Passenger not found' });
+    return res.json(info);
   } catch (e) { errorHandler(res, e); }
 };
 
 exports.update = async (req, res) => {
   try {
-    const updated = await passengerService.update(req.params.id, req.body || {});
-    if (!updated) return res.status(404).json({ message: 'Passenger not found' });
-    return res.json(updated);
+    return res.status(501).json({ message: 'Passenger updates are managed by the external user service.' });
   } catch (e) { errorHandler(res, e); }
 };
 
 exports.remove = async (req, res) => {
   try {
-    const r = await passengerService.remove(req.params.id);
-    if (!r) return res.status(404).json({ message: 'Passenger not found' });
-    return res.status(204).send();
+    return res.status(501).json({ message: 'Passenger deletion is managed by the external user service.' });
   } catch (e) { errorHandler(res, e); }
 };
 
 exports.getMyProfile = async (req, res) => {
   try {
     if (req.user.type !== 'passenger') return res.status(403).json({ message: 'Only passengers can access this endpoint' });
-    const passenger = await passengerService.getMyProfile(req.user.id);
+    const { getPassengerById } = require('../integrations/userServiceClient');
+    const passenger = await getPassengerById(req.user.id, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
     if (!passenger) return res.status(404).json({ message: 'Passenger not found' });
     return res.json(passenger);
   } catch (e) { errorHandler(res, e); }
@@ -50,19 +48,13 @@ exports.getMyProfile = async (req, res) => {
 
 exports.updateMyProfile = async (req, res) => {
   try {
-    if (req.user.type !== 'passenger') return res.status(403).json({ message: 'Only passengers can access this endpoint' });
-    const updated = await passengerService.updateMyProfile(req.user.id, req.body || {});
-    if (!updated) return res.status(404).json({ message: 'Passenger not found' });
-    return res.json(updated);
+    return res.status(501).json({ message: 'Profile updates are managed by the external user service.' });
   } catch (e) { errorHandler(res, e); }
 };
 
 exports.deleteMyAccount = async (req, res) => {
   try {
-    if (req.user.type !== 'passenger') return res.status(403).json({ message: 'Only passengers can delete their account' });
-    const r = await passengerService.deleteMyAccount(req.user.id);
-    if (!r) return res.status(404).json({ message: 'Passenger not found' });
-    return res.status(204).send();
+    return res.status(501).json({ message: 'Account deletion is managed by the external user service.' });
   } catch (e) { errorHandler(res, e); }
 };
 

@@ -9,110 +9,19 @@ const base = {
   ...crudController(Driver),
   list: async (req, res) => {
     try {
-      const { page = 1, limit = 20, status, available } = req.query;
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-      
-      let query = {};
-      if (status) {
-        query.status = status;
-      }
-      if (available !== undefined) {
-        query.available = available === 'true';
-      }
-      
-      const drivers = await Driver.find(query)
-        .select('_id name phone email vehicleType available lastKnownLocation rating createdAt updatedAt')
-        .skip(skip)
-        .limit(parseInt(limit))
-        .sort({ createdAt: -1 })
-        .lean();
-      
-      const total = await Driver.countDocuments(query);
-      
-      const response = drivers.map(d => ({
-        id: String(d._id),
-        name: d.name,
-        phone: d.phone,
-        email: d.email,
-        vehicleType: d.vehicleType,
-        available: !!d.available,
-        lastKnownLocation: d.lastKnownLocation || null,
-        rating: d.rating || 5.0,
-        createdAt: d.createdAt,
-        updatedAt: d.updatedAt
-      }));
-      
-      return res.json({
-        drivers: response,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / parseInt(limit))
-        }
-      });
+      const { listDrivers } = require('../integrations/userServiceClient');
+      const rows = await listDrivers(req.query || {}, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
+      return res.json({ drivers: rows });
     } catch (e) {
       return res.status(500).json({ message: `Failed to retrieve Driver list: ${e.message}` });
     }
   },
   get: async (req, res) => {
     try {
-      const driver = await Driver.findById(req.params.id)
-        .select('_id name phone email vehicleType available lastKnownLocation rating externalId createdAt updatedAt paymentPreferences paymentPreference')
-        .populate([
-          { path: 'paymentPreferences', select: { name: 1, logo: 1 } },
-          { path: 'paymentPreference', select: { name: 1, logo: 1 } }
-        ])
-        .lean();
-      
-      if (!driver) {
-        return res.status(404).json({ message: 'Driver not found' });
-      }
-      // Enrich from external service when needed using externalId
-      let name = driver.name;
-      let phone = driver.phone;
-      let email = driver.email;
-      const lookupExternalId = driver.externalId ? String(driver.externalId) : null;
-      if ((!name || !phone) && lookupExternalId) {
-        try {
-          const { getDriverById } = require('../integrations/userServiceClient');
-          const ext = await getDriverById(lookupExternalId, { headers: req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
-          if (ext) {
-            name = name || ext.name;
-            phone = phone || ext.phone;
-            email = email || ext.email;
-          }
-        } catch (_) {}
-      }
-
-      const response = {
-        id: String(driver._id),
-        name: name,
-        phone: phone,
-        email: email,
-        vehicleType: driver.vehicleType,
-        available: !!driver.available,
-        lastKnownLocation: driver.lastKnownLocation || null,
-        rating: driver.rating || 5.0,
-        paymentPreferences: (() => {
-          // Handle both old paymentPreference and new paymentPreferences
-          let prefs = [];
-          if (driver.paymentPreferences && Array.isArray(driver.paymentPreferences)) {
-            prefs = driver.paymentPreferences;
-          } else if (driver.paymentPreference) {
-            prefs = [driver.paymentPreference];
-          }
-          return prefs.map(pref => ({
-            _id: String(pref._id),
-            name: pref.name,
-            logo: pref.logo
-          }));
-        })(),
-        createdAt: driver.createdAt,
-        updatedAt: driver.updatedAt
-      };
-      
-      return res.json(response);
+      const { getDriverById } = require('../integrations/userServiceClient');
+      const info = await getDriverById(req.params.id, { headers: req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined });
+      if (!info) return res.status(404).json({ message: 'Driver not found' });
+      return res.json(info);
     } catch (e) {
       return res.status(500).json({ message: `Failed to retrieve Driver: ${e.message}` });
     }

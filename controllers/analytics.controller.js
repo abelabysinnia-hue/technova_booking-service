@@ -17,9 +17,21 @@ exports.getDashboardStats = async (req, res) => {
       { $match: { status: 'completed' } },
       { $group: { _id: null, total: { $sum: '$fareFinal' } } }
     ]);
-    const totalUsers = await Passenger.countDocuments();
-    const totalDrivers = await Driver.countDocuments();
-    const totalCars = await Driver.countDocuments();
+    // Fetch user counts from external service
+    let totalUsers = 0;
+    let totalDrivers = 0;
+    let totalCars = 0;
+    try {
+      const { listPassengers, listDrivers } = require('../integrations/userServiceClient');
+      const authHeader = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+      const [p, d] = await Promise.all([
+        listPassengers({}, { headers: authHeader }),
+        listDrivers({}, { headers: authHeader })
+      ]);
+      totalUsers = Array.isArray(p) ? p.length : 0;
+      totalDrivers = Array.isArray(d) ? d.length : 0;
+      totalCars = totalDrivers;
+    } catch (_) {}
     const totalComplaints = await Complaint.countDocuments();
 
     // Today's stats

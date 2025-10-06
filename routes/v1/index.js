@@ -29,7 +29,7 @@ router.use("/trips", require("./trip.routes"));
 router.use("/live", require("./live.routes"));
 router.use("/pricing", authorize("admin"), require("./pricing.routes"));
 router.use("/driver-pricing", require("./driverPricing.routes"));
-router.use("/admins", authorize("admin"), require("./admin.routes"));
+// Admin user management is handled by external service
 router.use("/drivers", require("./driver.routes"));
 // Payment options simple router
 router.get('/payment-options', async (req, res) => {
