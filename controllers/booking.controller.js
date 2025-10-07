@@ -31,12 +31,7 @@ exports.create = async (req, res) => {
       createdAt: booking.createdAt,
       updatedAt: booking.updatedAt
     };
-    try {
-      const { nearestPassengers } = require('../services/nearbyPassengers');
-      const nearest = await nearestPassengers({ latitude: booking.pickup.latitude, longitude: booking.pickup.longitude, limit: 5 });
-      const targets = (nearest || []).map(x => x.passenger);
-      bookingEvents.emitBookingCreatedToNearestPassengers({ ...data }, targets);
-    } catch (_) {}
+    // Remove passenger broadcast to avoid leaking status to other passengers
     return res.status(201).json(data);
   } catch (e) { errorHandler(res, e); }
 }

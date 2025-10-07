@@ -117,19 +117,41 @@ exports.adminListWallets = async (req, res) => {
       Wallet.countDocuments(filter),
     ]);
 
-    // Enrich with driver user info (name, phone) from local DB when available
-    let enriched = items;
+    // Enrich with driver user info (name, phone) from local DB and external service
+    let enriched = items.map(w => ({ ...w, user: { id: String(w.userId) } }));
     try {
       const { Driver } = require('../models/userModels');
       const { Types } = require('mongoose');
       const driverIds = [...new Set(items.map(w => String(w.userId)).filter(Boolean))];
       const validIds = driverIds.filter(id => Types.ObjectId.isValid(id));
-      const drivers = validIds.length ? await Driver.find({ _id: { $in: validIds } }).select({ _id: 1, name: 1, phone: 1, email: 1 }).lean() : [];
-      const dmap = Object.fromEntries(drivers.map(d => [String(d._id), { id: String(d._id), name: d.name, phone: d.phone, email: d.email }]));
-      enriched = items.map(w => ({
+      const driversById = validIds.length ? await Driver.find({ _id: { $in: validIds } }).select({ _id: 1, name: 1, phone: 1, email: 1 }).lean() : [];
+      const dmapById = Object.fromEntries(driversById.map(d => [String(d._id), { id: String(d._id), name: d.name, phone: d.phone, email: d.email }]));
+
+      // Map local by externalId for non-ObjectId userIds
+      const nonObjectIds = driverIds.filter(id => !Types.ObjectId.isValid(id));
+      const driversByExternal = nonObjectIds.length ? await Driver.find({ externalId: { $in: nonObjectIds } }).select({ _id: 1, externalId: 1, name: 1, phone: 1, email: 1 }).lean() : [];
+      const dmapByExternal = Object.fromEntries(driversByExternal.map(d => [String(d.externalId), { id: String(d._id), name: d.name, phone: d.phone, email: d.email, externalId: String(d.externalId) }]));
+
+      enriched = enriched.map(w => ({
         ...w,
-        user: dmap[String(w.userId)] || { id: String(w.userId) }
+        user: dmapById[String(w.userId)] || dmapByExternal[String(w.userId)] || w.user
       }));
+
+      // For any remaining without user details, fetch from external service in batch
+      const unresolved = enriched.filter(e => !e.user || !e.user.name).map(e => String(e.userId || e.user?.id)).filter(Boolean);
+      const uniqueUnresolved = [...new Set(unresolved)];
+      if (uniqueUnresolved.length) {
+        try {
+          const { getDriversByIds } = require('../integrations/userServiceClient');
+          const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+          const infos = await getDriversByIds(uniqueUnresolved, { headers });
+          const imap = Object.fromEntries((infos || []).map(i => [String(i.id), { id: String(i.id), name: i.name, phone: i.phone, email: i.email }]));
+          enriched = enriched.map(w => ({
+            ...w,
+            user: (w.user && w.user.name) ? w.user : (imap[String(w.userId)] || w.user)
+          }));
+        } catch (_) {}
+      }
     } catch (_) {}
 
     return res.json({ items: enriched, page, pageSize, total });

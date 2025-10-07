@@ -161,7 +161,7 @@ async function calculateLivePricing(bookingId, currentLocation) {
       minimumFareApplied: finalFare > currentFare
     });
 
-    const result = {
+  const result = {
       bookingId: String(booking._id),
       currentLocation,
       distanceTraveled: Math.round(distanceTraveled * 100) / 100, // Round to 2 decimal places
@@ -173,7 +173,7 @@ async function calculateLivePricing(bookingId, currentLocation) {
       updatedAt: new Date()
     };
 
-    // Broadcast pricing update to driver
+  // Broadcast pricing update to driver and persist live estimate on booking for consistency
     logger.info('[PricingService] Broadcasting pricing update:', {
       bookingId,
       broadcastChannels: [`pricing:update:${bookingId}`, 'pricing:update'],
@@ -186,6 +186,12 @@ async function calculateLivePricing(bookingId, currentLocation) {
 
     broadcast(`pricing:update:${bookingId}`, result);
     broadcast('pricing:update', result);
+
+  try {
+    booking.fareEstimated = result.currentFare;
+    booking.distanceKm = result.distanceTraveled;
+    await booking.save();
+  } catch (_) {}
 
     logger.info('[PricingService] Live pricing calculation completed successfully:', {
       bookingId: String(booking._id),

@@ -519,8 +519,8 @@ exports.getFinanceOverview = async (req, res) => {
       { $group: { _id: null, total: { $sum: '$netPayout' } } }
     ]);
 
-    // Top earning drivers
-    const topDrivers = await DriverEarnings.aggregate([
+    // Top earning drivers with basic user info
+    const topDriversRaw = await DriverEarnings.aggregate([
       { $match: dateFilter },
       {
         $group: {
@@ -532,6 +532,31 @@ exports.getFinanceOverview = async (req, res) => {
       { $sort: { totalEarnings: -1 } },
       { $limit: 10 }
     ]);
+    // Enrich names/phones from local DB and external service
+    let topDrivers = topDriversRaw;
+    try {
+      const { Driver } = require('../models/userModels');
+      const { Types } = require('mongoose');
+      const ids = topDriversRaw.map(d => String(d._id));
+      const valid = ids.filter(id => Types.ObjectId.isValid(id));
+      const local = valid.length ? await Driver.find({ _id: { $in: valid } }).select({ _id: 1, name: 1, phone: 1 }).lean() : [];
+      const lmap = Object.fromEntries(local.map(d => [String(d._id), { name: d.name, phone: d.phone }]));
+      const unresolved = ids.filter(id => !lmap[id]);
+      let emap = {};
+      if (unresolved.length) {
+        try {
+          const { getDriversByIds } = require('../integrations/userServiceClient');
+          const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+          const infos = await getDriversByIds(unresolved, { headers });
+          emap = Object.fromEntries((infos || []).map(i => [String(i.id), { name: i.name, phone: i.phone }]));
+        } catch (_) {}
+      }
+      topDrivers = topDriversRaw.map(d => ({
+        ...d,
+        name: (lmap[String(d._id)] || emap[String(d._id)] || {}).name,
+        phone: (lmap[String(d._id)] || emap[String(d._id)] || {}).phone
+      }));
+    } catch (_) {}
 
     // Most profitable routes (by distance)
     const profitableRoutes = await Booking.aggregate([
