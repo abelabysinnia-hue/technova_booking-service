@@ -3,10 +3,21 @@ const logger = require('../utils/logger');
 
 function buildUrlFromTemplate(template, params) {
   if (!template) return null;
-  return Object.keys(params || {}).reduce(
-    (acc, key) => acc.replace(new RegExp(`{${key}}`, 'g'), encodeURIComponent(String(params[key]))),
-    template
-  );
+  const allParams = params || {};
+  let result = template;
+  // Replace single-brace placeholders: {key}
+  Object.keys(allParams).forEach((key) => {
+    const value = allParams[key];
+    const encoded = key === 'baseUrl' ? String(value) : encodeURIComponent(String(value));
+    result = result.replace(new RegExp(`{${key}}`, 'g'), encoded);
+  });
+  // Replace mustache placeholders: {{ key }}
+  Object.keys(allParams).forEach((key) => {
+    const value = allParams[key];
+    const encoded = key === 'baseUrl' ? String(value) : encodeURIComponent(String(value));
+    result = result.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}}`, 'g'), encoded);
+  });
+  return result;
 }
 
 function getAuthHeaders(tokenOrHeader) {
@@ -80,7 +91,7 @@ function getTemplate(name) {
 async function getPassengerDetails(id, token) {
   try {
     const tpl = getTemplate('PASSENGER_LOOKUP_URL_TEMPLATE') || `${getAuthBase()}/passengers/{id}`;
-    const url = buildUrlFromTemplate(tpl, { id });
+    const url = buildUrlFromTemplate(tpl, { id, passengerId: id, baseUrl: getAuthBase() });
     logger.info('[external.passenger.get] request', { id: String(id), url });
     const data = await httpGet(url, getAuthHeaders(token));
     const u = data?.data || data?.user || data?.passenger || data;
@@ -94,7 +105,7 @@ async function getPassengerDetails(id, token) {
 async function getDriverDetails(id, token) {
   try {
     const tpl = getTemplate('DRIVER_LOOKUP_URL_TEMPLATE') || `${getAuthBase()}/drivers/{id}`;
-    const url = buildUrlFromTemplate(tpl, { id });
+    const url = buildUrlFromTemplate(tpl, { id, driverId: id, baseUrl: getAuthBase() });
     logger.info('[external.driver.get] request', { id: String(id), url });
     const data = await httpGet(url, getAuthHeaders(token));
     const u = data?.data || data?.user || data?.driver || data;
