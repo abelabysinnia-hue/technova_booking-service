@@ -90,7 +90,7 @@ function getTemplate(name) {
 // External-only API (auth service)
 async function getPassengerDetails(id, token) {
   try {
-    const tpl = getTemplate('PASSENGER_LOOKUP_URL_TEMPLATE') || `${getAuthBase()}/passengers/{id}`;
+    const tpl = getTemplate('PASSENGER_LOOKUP_URL_TEMPLATE') || `${getAuthBase()}/v1/passengers/{id}`;
     const url = buildUrlFromTemplate(tpl, { id, passengerId: id, baseUrl: getAuthBase() });
     logger.info('[external.passenger.get] request', { id: String(id), url });
     const data = await httpGet(url, getAuthHeaders(token));
@@ -104,7 +104,7 @@ async function getPassengerDetails(id, token) {
 
 async function getDriverDetails(id, token) {
   try {
-    const tpl = getTemplate('DRIVER_LOOKUP_URL_TEMPLATE') || `${getAuthBase()}/drivers/{id}`;
+    const tpl = getTemplate('DRIVER_LOOKUP_URL_TEMPLATE') || `${getAuthBase()}/v1/drivers/{id}`;
     const url = buildUrlFromTemplate(tpl, { id, driverId: id, baseUrl: getAuthBase() });
     logger.info('[external.driver.get] request', { id: String(id), url });
     const data = await httpGet(url, getAuthHeaders(token));
