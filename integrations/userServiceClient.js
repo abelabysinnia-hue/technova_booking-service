@@ -114,8 +114,52 @@ async function getDriverDetails(id, token) {
     const u = data?.data || data?.user || data?.driver || data;
     return { success: true, user: { id: String(u.id || u._id || id), name: u.name, phone: u.phone, email: u.email, externalId: u.externalId, vehicleType: u.vehicleType, carPlate: u.carPlate, carModel: u.carModel, carColor: u.carColor, rating: u.rating, available: u.available, lastKnownLocation: u.lastKnownLocation, paymentPreference: u.paymentPreference,} };
   } catch (e) {
-    logger.error('[external.driver.get] error', { id: String(id), message: e.response?.data?.message || e.message });
-    return { success: false, message: e.response?.data?.message || e.message };
+    const status = e.response?.status;
+    const message = e.response?.data?.message || e.message;
+    // Fallback: if detail lookup 404s, try searching via list endpoint
+    if (status === 404) {
+      try {
+        const base = getAuthBase();
+        const headers = getAuthHeaders(token);
+        const buildListUrl = (params = {}) => {
+          const u = new URL(`${base}/drivers`);
+          Object.entries(params).forEach(([k, v]) => { if (v != null) u.searchParams.set(k, String(v)); });
+          return u.toString();
+        };
+        logger.info('[external.driver.get] fallback search', { id: String(id) });
+        // Try common query keys first to avoid large payloads
+        const queryCandidates = [
+          { id },
+          { driverId: id },
+          { externalId: id },
+          { userId: id },
+        ];
+        let found = null;
+        for (const params of queryCandidates) {
+          try {
+            const listData = await httpGet(buildListUrl(params), headers);
+            const arr = Array.isArray(listData?.data) ? listData.data : Array.isArray(listData) ? listData : [];
+            found = (arr || []).find((u) => String(u.id || u._id || u.externalId || '') === String(id));
+            if (found) break;
+          } catch (_) { /* ignore and try next */ }
+        }
+        // Final fallback: fetch list with no filters and search locally
+        if (!found) {
+          try {
+            const listData = await httpGet(buildListUrl(), headers);
+            const arr = Array.isArray(listData?.data) ? listData.data : Array.isArray(listData) ? listData : [];
+            found = (arr || []).find((u) => String(u.id || u._id || u.externalId || '') === String(id));
+          } catch (_) { /* ignore */ }
+        }
+        if (found) {
+          return { success: true, user: { id: String(found.id || found._id || id), name: found.name, phone: found.phone, email: found.email, externalId: found.externalId, vehicleType: found.vehicleType, carPlate: found.carPlate, carModel: found.carModel, carColor: found.carColor, rating: found.rating, available: found.available, lastKnownLocation: found.lastKnownLocation, paymentPreference: found.paymentPreference } };
+        }
+      } catch (fallbackErr) {
+        logger.error('[external.driver.get] fallback error', { id: String(id), message: fallbackErr.response?.data?.message || fallbackErr.message });
+      }
+    }
+    logger.error('[external.driver.get] error', { id: String(id), message });
+    return { success: false, message };
   }
 }
 
