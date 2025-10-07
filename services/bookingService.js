@@ -48,11 +48,9 @@ async function resolvePassengerMeta(passengerId, jwtUser, authHeader) {
       }
     } catch (_) {}
   }
-  if (!passengerName || !passengerPhone) {
-    const err = new Error('Passenger name and phone are required from auth token or user directory');
-    err.status = 422;
-    throw err;
-  }
+  // Soft fallback: proceed with minimal meta from token only to avoid blocking bookings
+  if (!passengerName) passengerName = jwtUser?.name || `Passenger ${String(passengerId)}`;
+  if (!passengerPhone) passengerPhone = jwtUser?.phone || undefined;
   return { passengerName, passengerPhone };
 }
 
