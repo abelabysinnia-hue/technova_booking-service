@@ -90,6 +90,13 @@ const authorize = (...allowedRoles) => {
     // singularize simple plurals
     if (s === 'drivers') s = 'driver';
     if (s === 'admins') s = 'admin';
+    if (s === 'passengers') s = 'passenger';
+    if (s === 'staffs') s = 'staff';
+    if (s === 'superadmins') s = 'superadmin';
+    // map common synonyms
+    if (s === 'customer' || s === 'customers') s = 'passenger';
+    if (s === 'rider' || s === 'riders') s = 'passenger';
+    if (s === 'super_admin') s = 'superadmin';
     return s;
   };
 
