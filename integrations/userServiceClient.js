@@ -97,8 +97,25 @@ async function getPassengerDetails(id, token) {
     const u = data?.data || data?.user || data?.passenger || data;
     return { success: true, user: { id: String(u.id || u._id || id), name: u.name, phone: u.phone, email: u.email, externalId: u.externalId } };
   } catch (e) {
-    logger.error('[external.passenger.get] error', { id: String(id), message: e.response?.data?.message || e.message });
-    return { success: false, message: e.response?.data?.message || e.message };
+    const status = e.response?.status;
+    const message = e.response?.data?.message || e.message;
+    // Fallback: if forbidden using user token, retry with service bearer if available
+    if (status === 403) {
+      try {
+        const tpl = getTemplate('PASSENGER_LOOKUP_URL_TEMPLATE') || `${getAuthBase()}/passengers/{id}`;
+        const url = buildUrlFromTemplate(tpl, { id, passengerId: id, baseUrl: getAuthBase() });
+        logger.info('[external.passenger.get] retry with service token', { id: String(id), url });
+        const data = await httpGet(url, getAuthHeaders(/* no user token -> service bearer */));
+        const u = data?.data || data?.user || data?.passenger || data;
+        return { success: true, user: { id: String(u.id || u._id || id), name: u.name, phone: u.phone, email: u.email, externalId: u.externalId } };
+      } catch (e2) {
+        const message2 = e2.response?.data?.message || e2.message;
+        logger.error('[external.passenger.get] error', { id: String(id), message: message2 });
+        return { success: false, message: message2 };
+      }
+    }
+    logger.error('[external.passenger.get] error', { id: String(id), message });
+    return { success: false, message };
   }
 }
 
