@@ -33,29 +33,40 @@ const authenticate = async (req, res, next) => {
   const token = authHeader.split(' ')[1];
   try {
     let decoded;
+    let jwksError = null;
     if (process.env.AUTH_JWKS_URL) {
-      // Verify via JWKS (RS256)
-      decoded = await new Promise((resolve, reject) => {
-        jwt.verify(
-          token,
-          async (header, cb) => {
-            try {
-              const cert = await getSigningKey(header.kid);
-              if (!cert) return cb(new Error('Signing key not found'));
-              cb(null, cert);
-            } catch (e) { cb(e); }
-          },
-          {
-            algorithms: ['RS256'],
-            audience: process.env.AUTH_AUDIENCE || process.env.JWT_AUDIENCE || undefined,
-            issuer: process.env.AUTH_ISSUER || process.env.JWT_ISSUER || undefined
-          },
-          (err, payload) => err ? reject(err) : resolve(payload)
-        );
-      });
-    } else {
-      // HMAC fallback
-      decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+      // Prefer JWKS (RS256)
+      try {
+        decoded = await new Promise((resolve, reject) => {
+          jwt.verify(
+            token,
+            async (header, cb) => {
+              try {
+                const cert = await getSigningKey(header.kid);
+                if (!cert) return cb(new Error('Signing key not found'));
+                cb(null, cert);
+              } catch (e) { cb(e); }
+            },
+            {
+              algorithms: ['RS256'],
+              audience: process.env.AUTH_AUDIENCE || process.env.JWT_AUDIENCE || undefined,
+              issuer: process.env.AUTH_ISSUER || process.env.JWT_ISSUER || undefined
+            },
+            (err, payload) => err ? reject(err) : resolve(payload)
+          );
+        });
+      } catch (e) {
+        jwksError = e;
+      }
+    }
+    // Fallback to HMAC (HS*) if JWKS failed or not configured
+    if (!decoded) {
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+      } catch (hsError) {
+        // If both verifications fail, throw the JWKS error first if present
+        throw (jwksError || hsError);
+      }
     }
     req.user = decoded; 
     if (process.env.AUTH_DEBUG === '1') {
@@ -90,6 +101,13 @@ const authorize = (...allowedRoles) => {
     // singularize simple plurals
     if (s === 'drivers') s = 'driver';
     if (s === 'admins') s = 'admin';
+    if (s === 'passengers') s = 'passenger';
+    if (s === 'staffs') s = 'staff';
+    if (s === 'superadmins') s = 'superadmin';
+    // map common synonyms
+    if (s === 'customer' || s === 'customers') s = 'passenger';
+    if (s === 'rider' || s === 'riders') s = 'passenger';
+    if (s === 'super_admin') s = 'superadmin';
     return s;
   };
 

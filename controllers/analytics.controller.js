@@ -166,38 +166,39 @@ exports.getWeeklyReport = async (req, res) => {
     const startDate = weekStart ? dayjs(weekStart).startOf('week').toDate() : dayjs().startOf('week').toDate();
     const endDate = dayjs(startDate).endOf('week').toDate();
 
-    let report = await WeeklyReport.findOne({ weekStart: startDate });
-    
-    if (!report) {
-      // Generate weekly report
-      const rides = await Booking.find({
-        createdAt: { $gte: startDate, $lte: endDate }
-      });
+    // Always compute from live data for accuracy
+    const rides = await Booking.find({ createdAt: { $gte: startDate, $lte: endDate } }).lean();
 
-      const totalRevenue = rides
-        .filter(r => r.status === 'completed')
-        .reduce((sum, r) => sum + (r.fareFinal || r.fareEstimated), 0);
+    const completed = rides.filter(r => r.status === 'completed');
+    const totalRevenue = completed.reduce((sum, r) => sum + Number(r.fareFinal || 0), 0);
 
-      const totalCommission = await AdminEarnings.aggregate([
-        { $match: { tripDate: { $gte: startDate, $lte: endDate } } },
-        { $group: { _id: null, total: { $sum: '$commissionEarned' } } }
-      ]);
+    const commissionAgg = await AdminEarnings.aggregate([
+      { $match: { tripDate: { $gte: startDate, $lte: endDate } } },
+      { $group: { _id: null, total: { $sum: '$commissionEarned' } } }
+    ]);
+    const totalCommission = commissionAgg[0]?.total || 0;
 
-      const completedCount = rides.filter(r => r.status === 'completed').length;
-      const avgFare = completedCount > 0 ? totalRevenue / completedCount : 0;
-      report = await WeeklyReport.create({
-        weekStart: startDate,
-        weekEnd: endDate,
-        totalRides: rides.length,
-        totalRevenue,
-        totalCommission: totalCommission[0]?.total || 0,
-        completedRides: completedCount,
-        canceledRides: rides.filter(r => r.status === 'canceled').length,
-        averageFare: Number.isFinite(avgFare) ? avgFare : 0
-      });
-    }
+    const avgFare = completed.length > 0 ? totalRevenue / completed.length : 0;
 
-    res.json(report);
+    // Top drivers by net earnings in the week
+    const topDrivers = await require('../models/commission').DriverEarnings.aggregate([
+      { $match: { tripDate: { $gte: startDate, $lte: endDate } } },
+      { $group: { _id: '$driverId', rides: { $sum: 1 }, gross: { $sum: '$grossFare' }, commission: { $sum: '$commissionAmount' }, net: { $sum: '$netEarnings' } } },
+      { $sort: { net: -1 } },
+      { $limit: 10 }
+    ]);
+
+    res.json({
+      weekStart: startDate,
+      weekEnd: endDate,
+      totalRides: rides.length,
+      completedRides: completed.length,
+      canceledRides: rides.filter(r => r.status === 'canceled').length,
+      totalRevenue,
+      totalCommission,
+      averageFare: Number.isFinite(avgFare) ? avgFare : 0,
+      topDrivers
+    });
   } catch (e) {
     res.status(500).json({ message: `Failed to get weekly report: ${e.message}` });
   }
@@ -518,8 +519,8 @@ exports.getFinanceOverview = async (req, res) => {
       { $group: { _id: null, total: { $sum: '$netPayout' } } }
     ]);
 
-    // Top earning drivers
-    const topDrivers = await DriverEarnings.aggregate([
+    // Top earning drivers with basic user info
+    const topDriversRaw = await DriverEarnings.aggregate([
       { $match: dateFilter },
       {
         $group: {
@@ -531,6 +532,31 @@ exports.getFinanceOverview = async (req, res) => {
       { $sort: { totalEarnings: -1 } },
       { $limit: 10 }
     ]);
+    // Enrich names/phones from local DB and external service
+    let topDrivers = topDriversRaw;
+    try {
+      const { Driver } = require('../models/userModels');
+      const { Types } = require('mongoose');
+      const ids = topDriversRaw.map(d => String(d._id));
+      const valid = ids.filter(id => Types.ObjectId.isValid(id));
+      const local = valid.length ? await Driver.find({ _id: { $in: valid } }).select({ _id: 1, name: 1, phone: 1 }).lean() : [];
+      const lmap = Object.fromEntries(local.map(d => [String(d._id), { name: d.name, phone: d.phone }]));
+      const unresolved = ids.filter(id => !lmap[id]);
+      let emap = {};
+      if (unresolved.length) {
+        try {
+          const { getDriversByIds } = require('../integrations/userServiceClient');
+          const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+          const infos = await getDriversByIds(unresolved, { headers });
+          emap = Object.fromEntries((infos || []).map(i => [String(i.id), { name: i.name, phone: i.phone }]));
+        } catch (_) {}
+      }
+      topDrivers = topDriversRaw.map(d => ({
+        ...d,
+        name: (lmap[String(d._id)] || emap[String(d._id)] || {}).name,
+        phone: (lmap[String(d._id)] || emap[String(d._id)] || {}).phone
+      }));
+    } catch (_) {}
 
     // Most profitable routes (by distance)
     const profitableRoutes = await Booking.aggregate([
