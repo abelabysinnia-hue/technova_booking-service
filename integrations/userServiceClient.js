@@ -69,7 +69,10 @@ async function httpPost(url, body, headers) {
 
 // Low-level helpers driven by env configuration
 function getAuthBase() {
-  return (process.env.AUTH_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const raw = (process.env.AUTH_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+  // Ensure version segment exists (e.g., /v1) unless already present
+  if (/\/v\d+(\/)?$/.test(raw)) return raw;
+  return `${raw}/v1`;
 }
 
 // Replace ${ENV_VAR} placeholders in templates with environment values
