@@ -141,20 +141,27 @@ exports.adminGetDriverWallet = async (req, res) => {
   try {
     const driverId = String(req.params.driverId);
     const limit = Math.min(Math.max(parseInt(req.query.limit || '100', 10), 1), 500);
-    const [wallet, txs] = await Promise.all([
+  const [wallet, txs] = await Promise.all([
       Wallet.findOne({ userId: driverId, role: 'driver' }).lean(),
       Transaction.find({ userId: driverId, role: 'driver' }).sort({ createdAt: -1 }).limit(limit).lean(),
     ]);
-    // Attach driver user info if present
+    // Attach driver user info: prefer local DB, else external service as fallback
     let user;
     try {
       const { Driver } = require('../models/userModels');
-      const { Types } = require('mongoose');
       if (require('mongoose').Types.ObjectId.isValid(driverId)) {
         const d = await Driver.findById(driverId).select({ _id: 1, name: 1, phone: 1, email: 1 }).lean();
         if (d) user = { id: String(d._id), name: d.name, phone: d.phone, email: d.email };
       }
     } catch (_) {}
+    if (!user) {
+      try {
+        const { getDriverById } = require('../integrations/userServiceClient');
+        const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+        const info = await getDriverById(driverId, { headers });
+        if (info) user = { id: String(info.id), name: info.name, phone: info.phone, email: info.email };
+      } catch (_) {}
+    }
     return res.json({ wallet: wallet || { userId: driverId, role: 'driver', balance: 0, totalEarnings: 0, currency: 'ETB' }, user: user || { id: driverId }, transactions: txs });
   } catch (e) { return res.status(500).json({ message: e.message }); }
 };
