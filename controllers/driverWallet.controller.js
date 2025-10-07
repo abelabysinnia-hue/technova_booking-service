@@ -165,7 +165,7 @@ exports.adminGetDriverWallet = async (req, res) => {
         // Try with caller token first
         const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
         let info = await getDriverById(driverId, { headers });
-        if (!info || !info.name || !info.phone) {
+        if ((!info || !info.name || !info.phone) && process.env.AUTH_SERVICE_BEARER) {
           // Fallback to service bearer if user token lacks permission
           info = await getDriverById(driverId, { headers: undefined });
         }

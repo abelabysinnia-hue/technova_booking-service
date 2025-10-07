@@ -37,13 +37,13 @@ exports.list = async (req, res) => {
     const bookingIds = rows.map(r => r.bookingId).filter(Boolean);
 
     const validPassengerIds = passengerIds.filter(id => Types.ObjectId.isValid(id));
-    const validDriverIds = driverIds.filter(id => Types.ObjectId.isValid(id));
     const validBookingIds = bookingIds.filter(id => Types.ObjectId.isValid(id));
 
     // Fetch passengers, drivers, and bookings
     const [passengers, drivers, bookings] = await Promise.all([
       validPassengerIds.length ? Passenger.find({ _id: { $in: validPassengerIds } }).select({ _id: 1, name: 1, phone: 1, email: 1 }).lean() : Promise.resolve([]),
-      validDriverIds.length ? Driver.find({ _id: { $in: validDriverIds } }).select({ _id: 1, name: 1, phone: 1, email: 1, vehicleType: 1 }).lean() : Promise.resolve([]),
+      // Driver ids in our DB are string-based; query all collected ids directly
+      driverIds.length ? Driver.find({ _id: { $in: driverIds } }).select({ _id: 1, name: 1, phone: 1, email: 1, vehicleType: 1 }).lean() : Promise.resolve([]),
       validBookingIds.length ? Booking.find({ _id: { $in: validBookingIds } }).select({ _id: 1, pickup: 1, dropoff: 1, vehicleType: 1, passengerName: 1, passengerPhone: 1 }).lean() : Promise.resolve([])
     ]);
 
@@ -60,6 +60,23 @@ exports.list = async (req, res) => {
         const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
         const infos = await getDriversByIds(nonObjectDriverIds, { headers });
         extraDriverInfo = Object.fromEntries((infos || []).map(i => [String(i.id), { id: String(i.id), name: i.name, phone: i.phone, email: i.email }]));
+      }
+    } catch (_) {}
+
+    // Fetch extra passenger info for non-ObjectId passengerIds
+    let extraPassengerInfo = {};
+    try {
+      const nonObjectPassengerIds = passengerIds.filter(id => !Types.ObjectId.isValid(id));
+      if (nonObjectPassengerIds.length) {
+        const { getPassengerById } = require('../integrations/userServiceClient');
+        const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+        const results = await Promise.all(nonObjectPassengerIds.map(async (pid) => {
+          try {
+            const info = await getPassengerById(pid, { headers });
+            return info ? [String(pid), { id: String(pid), name: info.name, phone: info.phone, email: info.email }] : null;
+          } catch (_) { return null; }
+        }));
+        extraPassengerInfo = Object.fromEntries(results.filter(Boolean));
       }
     } catch (_) {}
 
@@ -88,7 +105,9 @@ exports.list = async (req, res) => {
         dateOfTravel: r.dateOfTravel,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
-        passenger: toBasicUser(pidMap[String(r.passengerId)]) || (b ? { id: String(r.passengerId), name: b.passengerName, phone: b.passengerPhone } : undefined),
+        passenger: toBasicUser(pidMap[String(r.passengerId)])
+          || extraPassengerInfo[String(r.passengerId)]
+          || (b ? { id: String(r.passengerId), name: b.passengerName, phone: b.passengerPhone } : undefined),
         driver: driverDetail,
         booking: b ? {
           id: String(b._id),
@@ -118,11 +137,31 @@ exports.get = async (req, res) => {
     const r = await TripHistory.findById(req.params.id).lean();
     if (!r) return res.status(404).json({ message: 'Trip not found' });
 
-    const [p, d, b] = await Promise.all([
+    const [pLocal, dLocal, b] = await Promise.all([
       (r.passengerId && Types.ObjectId.isValid(r.passengerId)) ? Passenger.findById(r.passengerId).select({ _id: 1, name: 1, phone: 1, email: 1 }).lean() : null,
-      (r.driverId && Types.ObjectId.isValid(r.driverId)) ? Driver.findById(r.driverId).select({ _id: 1, name: 1, phone: 1, email: 1, vehicleType: 1 }).lean() : null,
+      (r.driverId) ? Driver.findOne({ _id: String(r.driverId) }).select({ _id: 1, name: 1, phone: 1, email: 1, vehicleType: 1 }).lean() : null,
       (r.bookingId && Types.ObjectId.isValid(r.bookingId)) ? Booking.findById(r.bookingId).select({ _id: 1, pickup: 1, dropoff: 1, vehicleType: 1, passengerName: 1, passengerPhone: 1 }).lean() : null
     ]);
+
+    // Fallback to external services if local docs missing
+    let p = pLocal;
+    if (!p && r.passengerId && !Types.ObjectId.isValid(r.passengerId)) {
+      try {
+        const { getPassengerById } = require('../integrations/userServiceClient');
+        const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+        const info = await getPassengerById(String(r.passengerId), { headers });
+        if (info) p = { _id: String(r.passengerId), name: info.name, phone: info.phone, email: info.email };
+      } catch (_) {}
+    }
+    let d = dLocal;
+    if (!d && r.driverId) {
+      try {
+        const { getDriverById } = require('../integrations/userServiceClient');
+        const headers = req.headers && req.headers.authorization ? { Authorization: req.headers.authorization } : undefined;
+        const info = await getDriverById(String(r.driverId), { headers });
+        if (info) d = { _id: String(info.id), name: info.name, phone: info.phone, email: info.email };
+      } catch (_) {}
+    }
 
     const data = {
       id: String(r._id),

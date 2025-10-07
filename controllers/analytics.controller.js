@@ -166,38 +166,39 @@ exports.getWeeklyReport = async (req, res) => {
     const startDate = weekStart ? dayjs(weekStart).startOf('week').toDate() : dayjs().startOf('week').toDate();
     const endDate = dayjs(startDate).endOf('week').toDate();
 
-    let report = await WeeklyReport.findOne({ weekStart: startDate });
-    
-    if (!report) {
-      // Generate weekly report
-      const rides = await Booking.find({
-        createdAt: { $gte: startDate, $lte: endDate }
-      });
+    // Always compute from live data for accuracy
+    const rides = await Booking.find({ createdAt: { $gte: startDate, $lte: endDate } }).lean();
 
-      const totalRevenue = rides
-        .filter(r => r.status === 'completed')
-        .reduce((sum, r) => sum + (r.fareFinal || r.fareEstimated), 0);
+    const completed = rides.filter(r => r.status === 'completed');
+    const totalRevenue = completed.reduce((sum, r) => sum + Number(r.fareFinal || 0), 0);
 
-      const totalCommission = await AdminEarnings.aggregate([
-        { $match: { tripDate: { $gte: startDate, $lte: endDate } } },
-        { $group: { _id: null, total: { $sum: '$commissionEarned' } } }
-      ]);
+    const commissionAgg = await AdminEarnings.aggregate([
+      { $match: { tripDate: { $gte: startDate, $lte: endDate } } },
+      { $group: { _id: null, total: { $sum: '$commissionEarned' } } }
+    ]);
+    const totalCommission = commissionAgg[0]?.total || 0;
 
-      const completedCount = rides.filter(r => r.status === 'completed').length;
-      const avgFare = completedCount > 0 ? totalRevenue / completedCount : 0;
-      report = await WeeklyReport.create({
-        weekStart: startDate,
-        weekEnd: endDate,
-        totalRides: rides.length,
-        totalRevenue,
-        totalCommission: totalCommission[0]?.total || 0,
-        completedRides: completedCount,
-        canceledRides: rides.filter(r => r.status === 'canceled').length,
-        averageFare: Number.isFinite(avgFare) ? avgFare : 0
-      });
-    }
+    const avgFare = completed.length > 0 ? totalRevenue / completed.length : 0;
 
-    res.json(report);
+    // Top drivers by net earnings in the week
+    const topDrivers = await require('../models/commission').DriverEarnings.aggregate([
+      { $match: { tripDate: { $gte: startDate, $lte: endDate } } },
+      { $group: { _id: '$driverId', rides: { $sum: 1 }, gross: { $sum: '$grossFare' }, commission: { $sum: '$commissionAmount' }, net: { $sum: '$netEarnings' } } },
+      { $sort: { net: -1 } },
+      { $limit: 10 }
+    ]);
+
+    res.json({
+      weekStart: startDate,
+      weekEnd: endDate,
+      totalRides: rides.length,
+      completedRides: completed.length,
+      canceledRides: rides.filter(r => r.status === 'canceled').length,
+      totalRevenue,
+      totalCommission,
+      averageFare: Number.isFinite(avgFare) ? avgFare : 0,
+      topDrivers
+    });
   } catch (e) {
     res.status(500).json({ message: `Failed to get weekly report: ${e.message}` });
   }
