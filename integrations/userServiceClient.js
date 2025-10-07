@@ -123,6 +123,8 @@ async function getDriverDetails(id, token) {
         const headers = getAuthHeaders(token);
         const buildListUrl = (params = {}) => {
           const u = new URL(`${base}/drivers`);
+          // Ask for a large page to increase hit chance when unfiltered
+          if (!('limit' in params)) u.searchParams.set('limit', '1000');
           Object.entries(params).forEach(([k, v]) => { if (v != null) u.searchParams.set(k, String(v)); });
           return u.toString();
         };
@@ -139,7 +141,10 @@ async function getDriverDetails(id, token) {
           try {
             const listData = await httpGet(buildListUrl(params), headers);
             const arr = Array.isArray(listData?.data) ? listData.data : Array.isArray(listData) ? listData : [];
-            found = (arr || []).find((u) => String(u.id || u._id || u.externalId || '') === String(id));
+            found = (arr || []).find((u) => {
+              const candidates = [u.id, u._id, u.externalId, u.driverId, u.userId];
+              return candidates.some((val) => val != null && String(val) === String(id));
+            });
             if (found) break;
           } catch (_) { /* ignore and try next */ }
         }
@@ -148,7 +153,10 @@ async function getDriverDetails(id, token) {
           try {
             const listData = await httpGet(buildListUrl(), headers);
             const arr = Array.isArray(listData?.data) ? listData.data : Array.isArray(listData) ? listData : [];
-            found = (arr || []).find((u) => String(u.id || u._id || u.externalId || '') === String(id));
+            found = (arr || []).find((u) => {
+              const candidates = [u.id, u._id, u.externalId, u.driverId, u.userId];
+              return candidates.some((val) => val != null && String(val) === String(id));
+            });
           } catch (_) { /* ignore */ }
         }
         if (found) {
