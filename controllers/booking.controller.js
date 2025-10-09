@@ -100,31 +100,112 @@ exports.update = async (req, res) => {
 
 exports.remove = async (req, res) => {
   try { 
-    const { Booking } = require('../models/bookingModels');
-    const r = await Booking.findOneAndDelete({ _id: req.params.id, passengerId: String(req.user?.id) }); 
-    if (!r) return res.status(404).json({ message: 'Booking not found or you do not have permission to delete it' }); 
-    return res.status(204).send(); 
+    const bookingId = req.params.id;
+    const requester = req.user;
+    
+    // Use the lifecycle handler for cancellation instead of direct deletion
+    const result = await bookingService.cancelBooking({
+      bookingId,
+      canceledReason: 'Passenger requested cancellation',
+      requester
+    });
+    
+    // Emit booking update event
+    bookingEvents.emitBookingUpdate(bookingId, { status: 'canceled' });
+    
+    return res.json(result);
   } catch (e) { errorHandler(res, e); }
 }
 
 exports.lifecycle = async (req, res) => {
   try {
-    const { status } = req.body;
-    const booking = await bookingService.updateBookingLifecycle({ requester: req.user, id: req.params.id, status });
-    bookingEvents.emitBookingUpdate(String(booking._id || booking.id), { status });
-    return res.json(booking);
+    const { 
+      status, 
+      passengerCancels, 
+      passengerDisconnected, 
+      driverAccepted, 
+      driverId, 
+      passengerId, 
+      vehicleType, 
+      location, 
+      pricing,
+      canceledReason 
+    } = req.body;
+    
+    const bookingId = req.params.id;
+    const requester = req.user;
+
+    // Handle different lifecycle scenarios
+    if (passengerCancels || passengerDisconnected || driverAccepted) {
+      // Use the comprehensive lifecycle handler
+      await bookingService.handleBookingLifecycle({
+        bookingId,
+        passengerCancels,
+        passengerDisconnected,
+        driverAccepted,
+        driverId: driverId || requester.id,
+        passengerId: passengerId || requester.id,
+        vehicleType,
+        location,
+        pricing
+      });
+      
+      // Emit booking update event
+      bookingEvents.emitBookingUpdate(bookingId, { 
+        status: status || (passengerCancels ? 'canceled' : driverAccepted ? 'accepted' : 'requested')
+      });
+      
+      return res.json({ 
+        success: true, 
+        message: 'Lifecycle event handled successfully',
+        bookingId 
+      });
+    } else if (status === 'canceled') {
+      // Handle cancellation through existing service
+      const result = await bookingService.cancelBooking({
+        bookingId,
+        canceledReason,
+        requester
+      });
+      
+      bookingEvents.emitBookingUpdate(bookingId, { status: 'canceled' });
+      return res.json(result);
+    } else {
+      // Handle regular status updates
+      const booking = await bookingService.updateBookingLifecycle({ 
+        requester, 
+        id: bookingId, 
+        status 
+      });
+      bookingEvents.emitBookingUpdate(String(booking._id || booking.id), { status });
+      return res.json(booking);
+    }
   } catch (e) { errorHandler(res, e); }
 }
 
 exports.assign = async (req, res) => {
   try {
     const bookingId = req.params.id;
-    const { driverId, dispatcherId, passengerId } = req.body;
+    const { driverId, dispatcherId, passengerId, vehicleType, location, pricing } = req.body;
     try { logger.info('[route] POST /v1/bookings/:id/assign', { by: req.user && req.user.id, role: req.user && req.user.type, bookingId, driverId, dispatcherId, passengerId }); } catch (_) {}
     if (!driverId) return res.status(400).json({ message: 'Driver ID is required for assignment' });
     if (!dispatcherId) return res.status(400).json({ message: 'Dispatcher ID is required for assignment' });
+    
+    // Use lifecycle handler for driver acceptance
+    await bookingService.handleBookingLifecycle({
+      bookingId,
+      driverAccepted: true,
+      driverId,
+      passengerId: passengerId || req.user.id,
+      vehicleType,
+      location,
+      pricing
+    });
+    
+    // Also call the original assign service for database updates
     const result = await bookingService.assignDriver({ bookingId, driverId, dispatcherId, passengerId });
     bookingEvents.emitBookingAssigned(String(bookingId), String(driverId));
+    
     try {
       const b = result && result.booking;
       logger.info('[assign] success', {
